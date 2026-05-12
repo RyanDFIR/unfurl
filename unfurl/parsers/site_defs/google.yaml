@@ -7,8 +7,8 @@ name: Google
 domains:
   - google.com
 edge:
-  color: "#4285F4"
-  title: Google
+  color: green
+  title: Google-related Parsing Functions
   label: "G"
 
 # --- /url redirect pages ---
@@ -39,10 +39,9 @@ query_rules:
     apply:
       hover_only: true
       hover: >-
-        Google redirect action type. Common values:
-        <b>t</b> = standard redirect (from search results),
-        <b>D</b> = redirect from a Google product (Docs, Hangouts, etc.),
-        <b>U</b> = redirect from a Google Cache page.
+        Suspected Google redirect action type. Most commonly observed 
+        value is <b>t</b>; other observed values include
+        <b>f</b>, <b>i</b>, <b>D</b>, <b>U</b>, <b>z</b>, <b>j</b>, & <b>X</b>. 
 
   - key: usg
     path: /url
@@ -74,14 +73,35 @@ query_rules:
     apply:
       hover_only: true
       hover: >-
-        Redirect confirmation type. Typically <b>j</b> (JavaScript redirect).
+        Suspected "redirect confirmation type"; typically <b>j</b>.
 
-  - key: esrc
+  - key: source
     path: /url
     apply:
       hover_only: true
       hover: >-
-        Source of the redirect. Typically <b>s</b> (search).
+        Google product/surface the redirect originated from. Most common
+        value is <b>web</b> (~99%). Other observed values: <b>finance</b>,
+        <b>imgres</b> / <b>images</b> (Image Search), <b>blogsearch</b>,
+        <b>transpromo</b>, and <code>gbs_*</code> (Google Books).
+
+  - key: cd
+    path: /url
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected <b>"click depth"</b> — the position (1-based) of the
+        clicked result on the referring page. Most values are small
+        integers 1–10; longer values are observed but rare. 
+
+  - key: sig2
+    path: /url
+    apply:
+      hover_only: true
+      hover: >-
+        Secondary signature. 22-character URL-safe base64; values are
+        nearly always unique. Purpose not publicly documented; presumed
+        cryptographic verification of the redirect, like <code>usg</code>.
 
   # --- /imgres (image result pages) ---
 
@@ -153,5 +173,106 @@ query_rules:
     apply:
       hover_only: true
       hover: >-
-        Interaction action type — how the user reached this image result.
+        Suspected "interaction click type" — how the user reached this image result.
         Common values: <b>rc</b> = right-click, <b>hc</b> = hover-click.
+
+  # --- /aclk (ad click tracking) ---
+  # google.com/aclk?sa=L&ai=...&sig=AOD64_...&adurl=DESTINATION&...
+  # This endpoint records ad clicks and redirects to the advertiser's landing page.
+
+  - key: adurl
+    path: /aclk
+    apply:
+      label: "Ad Destination"
+      data_type: descriptor
+      hover: >-
+        The advertiser's <b>landing page URL</b> (the destination the
+        user is sent to after clicking the Google ad).
+
+  - key: ai
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Opaque blob (URL-safe base64) attached to ad-click
+        redirects. The decoded bytes use a non-standard framing (a 1-byte
+        prefix before any protobuf content); contents are not
+        publicly documented by Google.
+
+  - key: sig
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Google ad click <b>signature</b>. Verifies the click was generated
+        by Google's ad serving infrastructure and has not been tampered with.
+
+  - key: sa
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected Google ad action type. Nearly always <b>l</b> or <b>L</b>.
+
+  - key: gclid
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        <b>Google Click ID</b> — a unique identifier for this ad click, passed
+        to the advertiser's landing page for conversion tracking.
+
+  - key: ctype
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected "content interaction type" is an integer; meaning is not
+        publicly documented by Google. 
+
+  - key: ved
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Google tracking parameter encoding the ad's position and type on
+        the search results page. Contains a protobuf-encoded structure.
+
+  - key: cid
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected <b>"click identifier"</b>. The value often is a URL-safe 
+        base64-encoded 2-field protobuf envelope: a small varint flag
+        and an opaque high-entropy payload blob.
+
+  - key: rct
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected "redirect confirmation type"; typically <b>j</b>.
+
+  - key: nis
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected <b>"number of impression slots"</b>; possibly the count
+        of ad slots visible on the page.
+
+  - key: ase
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Purpose unknown; typically <b>2</b>.
+
+  - key: category
+    path: /aclk
+    apply:
+      hover_only: true
+      hover: >-
+        Suspected ad category code. All observed values match
+        <b>acrcp_v1_N</b>. 
