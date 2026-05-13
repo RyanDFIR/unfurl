@@ -140,5 +140,55 @@ class TestGoogle(unittest.TestCase):
         self.assertIn('signature', usg_node.hover.lower())
 
 
+    def test_google_aclk_ad_click(self):
+        """Test that google.com/aclk ad click URLs are parsed correctly.
+
+        The adurl parameter is the advertiser's landing page and should be
+        parsed as a URL. Tracking params (ai, sig, gclid, etc.) get hover text.
+        """
+
+        test = Unfurl()
+        test.remote_lookups = False
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://www.google.com/aclk?sa=L&ai=DChcSEwiE4ujK09SFAxWYroMHHfGZAigYABAAGgJlZg'
+                  '&sig=AOD64_01K4cZUGNjr9xJflXR3zH81_Do6w'
+                  '&gclid=EAIaIQobChMIhOLoytPUhQMVmK6DBx3xmQIoEAMYASAAEgIYYfD_BwE'
+                  '&adurl=https://example.com/landing-page%3Futm_source%3Dgoogle'
+                  '&ved=2ahUKEwiE4ujK09SFAxWYroMHHfGZAigQgQ16BAgDEAE')
+        test.parse_queue()
+
+        # adurl should be parsed as a destination URL node
+        adurl_nodes = [
+            n for n in test.nodes.values()
+            if n.data_type == 'url'
+            and urlparse(str(n.value)).hostname == 'example.com'
+        ]
+        self.assertGreaterEqual(len(adurl_nodes), 1)
+
+        # adurl child node should have "Ad Destination" label
+        adurl_labeled = [n for n in test.nodes.values()
+                         if 'Ad Destination' in (n.label or '')]
+        self.assertGreaterEqual(len(adurl_labeled), 1)
+
+        # ai should have hover text about ad metadata
+        ai_node = next(n for n in test.nodes.values()
+                       if n.data_type == 'url.query.pair' and n.key == 'ai')
+        self.assertIsNotNone(ai_node.hover)
+        self.assertIn('ad', ai_node.hover.lower())
+
+        # sig should have hover text about signature
+        sig_node = next(n for n in test.nodes.values()
+                        if n.data_type == 'url.query.pair' and n.key == 'sig')
+        self.assertIsNotNone(sig_node.hover)
+        self.assertIn('signature', sig_node.hover.lower())
+
+        # gclid should have hover text
+        gclid_node = next(n for n in test.nodes.values()
+                          if n.data_type == 'url.query.pair' and n.key == 'gclid')
+        self.assertIsNotNone(gclid_node.hover)
+        self.assertIn('click', gclid_node.hover.lower())
+
+
 if __name__ == '__main__':
     unittest.main()

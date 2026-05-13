@@ -170,13 +170,12 @@ def _check_query_rule(unfurl, node, rule, site_def):
     edge_config = site_def['_edge_config']
     label = _format_label(apply.get('label', '{value}'), node.value)
 
-    # If data_type is 'url', we want the value to be parsed as a URL
     data_type = apply.get('data_type', 'descriptor')
 
     unfurl.add_to_queue(
         data_type=data_type,
         key=None,
-        value=node.value,
+        value=node.value if data_type != 'descriptor' else None,
         label=label,
         hover=apply.get('hover', ''),
         parent_id=node.node_id,
