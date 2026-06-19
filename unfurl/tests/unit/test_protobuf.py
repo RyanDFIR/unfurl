@@ -71,6 +71,26 @@ class TestProtobuf(unittest.TestCase):
         self.assertTrue(test.queue.empty())
         self.assertEqual(len(test.edges), 0)
 
+    def test_base32_protobuf(self):
+        """ Test a protobuf that is encoded with base32."""
+
+        test = Unfurl()
+        test.remote_lookups = False
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='BJCAUCCKN5UG4ICEN5SRBUQJDIIGUZDPMVAGK6DBNVYGYZJOMNXW2IHK7777777'
+                  '777776AJISLG3ZQ75YHMLJOIBGF65BM2Z6U4REQB2AQABENCW')
+        test.parse_queue()
+
+        # Confirm it was decoded from base32, then parsed as a protobuf
+        self.assertEqual('proto.dict', test.nodes[2].data_type)
+        self.assertEqual('b32+proto', test.nodes[2].incoming_edge_config['label'])
+        self.assertEqual('jdoe@example.com', test.nodes[5].value)
+
+        # make sure the queue finished empty
+        self.assertTrue(test.queue.empty())
+        self.assertEqual(len(test.edges), 0)
+
     def test_hex_protobuf(self):
         """ Test a protobuf that is encoded as hex."""
 

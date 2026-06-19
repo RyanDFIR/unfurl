@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
+import binascii
 import ipaddress
 import re
 import textwrap
@@ -24,6 +26,12 @@ from typing import Union
 long_int_re = re.compile(r'\d{8,}')
 urlsafe_b64_re = re.compile(r'[A-Za-z0-9_\-]{8,}={0,2}')
 standard_b64_re = re.compile(r'[A-Za-z0-9+/]{8,}={0,2}')
+base32_re = re.compile(r'[A-Z2-7]{8,}={0,6}')
+# Bitcoin/IPFS base58 alphabet: alphanumerics minus 0 O I l (no padding).
+# Unlike base32/64, base58 has no length structure -- nearly any alphanumeric
+# string decodes -- so a higher minimum length is needed to keep false positives
+# (measured) on par with the other base decoders.
+base58_re = re.compile(r'[1-9A-HJ-NP-Za-km-z]{16,}')
 hex_re = re.compile(r'([A-F0-9]{2})+', flags=re.IGNORECASE)
 digits_re = re.compile(r'\d+')
 letters_re = re.compile(r'[A-Z]+', flags=re.IGNORECASE)
@@ -33,6 +41,47 @@ float_re = re.compile(r'\d+\.\d+')
 mac_addr_re = re.compile(r'(?P<mac_addr>[0-9A-Fa-f]{12}|([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2})')
 cisco_7_re = re.compile(r'\d{2}[A-F0-9]{4,}', re.IGNORECASE)
 octal_ip_re = re.compile(r'(0[0-7]{3})\.(0[0-7]{3})\.(0[0-7]{3})\.(0[0-7]{3})')
+
+
+# Printable ASCII bytes (visible characters plus tab, newline, and carriage
+# return). Used to decide whether decoded base32/base64 bytes look like a real
+# text payload rather than control-character garbage from a wrong guess.
+PRINTABLE_ASCII_BYTES = frozenset(range(0x20, 0x7f)) | {0x09, 0x0a, 0x0d}
+
+
+def is_printable_ascii(data: bytes) -> bool:
+    """Return True if data is non-empty and every byte is printable ASCII.
+
+    A strict ASCII decode still admits control bytes (0x00-0x1f), which is how
+    a wrong base32-vs-base64 guess sneaks through as "ASCII" garbage. Requiring
+    printable output is a much stronger signal that the decode is real.
+    """
+    return bool(data) and all(byte in PRINTABLE_ASCII_BYTES for byte in data)
+
+
+def try_base32_decode(value):
+    """Return base32-decoded bytes for value, or None if it isn't decodable base32.
+
+    Pure decode mechanics (alphabet, length, and padding handling) shared by the
+    base32 parser and the binary-consuming parsers (compression, protobuf) so they
+    can attempt a base32 decode of a source string without duplicating the logic.
+    """
+    if not isinstance(value, str) or not base32_re.fullmatch(value):
+        return None
+
+    unpadded = value.rstrip('=')
+
+    # Base32 encodes 5 bytes into 8 characters, so a valid (unpadded) length mod 8
+    # is one of 0, 2, 4, 5, or 7. Anything else can't be base32.
+    remainder = len(unpadded) % 8
+    if remainder in (1, 3, 6):
+        return None
+
+    padded = unpadded + ('=' * ((8 - remainder) % 8))
+    try:
+        return base64.b32decode(padded)
+    except (binascii.Error, ValueError):
+        return None
 
 
 def parse_ip_address(potential_ip):

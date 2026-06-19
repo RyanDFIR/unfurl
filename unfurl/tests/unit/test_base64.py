@@ -74,5 +74,33 @@ class TestBase64(unittest.TestCase):
         self.assertEqual(len(test.edges), 0)
 
 
+    def test_explicit_base64_decodes_directly(self):
+        """ A node explicitly labelled 'base64' decodes directly, bypassing the
+        auto-detection heuristics."""
+
+        test = Unfurl()
+        test.add_to_queue(data_type='base64', key=None, value='dGVzdA==')
+        test.parse_queue()
+
+        self.assertEqual('string', test.nodes[2].data_type)
+        self.assertEqual('test', test.nodes[2].value)
+        self.assertEqual('b64', test.nodes[2].incoming_edge_config['label'])
+
+    def test_explicit_base64_binary_emits_bytes(self):
+        """ An explicitly-labelled base64 node whose decode is non-printable is
+        surfaced as a bytes node (not dropped like in auto-detection)."""
+
+        import base64
+
+        test = Unfurl()
+        value = base64.b64encode(bytes([0, 1, 2, 255])).decode()
+        test.add_to_queue(data_type='base64', key=None, value=value)
+        test.parse_queue()
+
+        self.assertEqual('bytes', test.nodes[2].data_type)
+        self.assertEqual(bytes([0, 1, 2, 255]), test.nodes[2].value)
+        self.assertEqual('b64', test.nodes[2].incoming_edge_config['label'])
+
+
 if __name__ == '__main__':
     unittest.main()
