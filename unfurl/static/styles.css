@@ -27,7 +27,7 @@ limitations under the License.*/
     height:12px;
 }
 
-.active, .collapsible:hover {
+.collapsible.active, .collapsible:hover {
   background-color: #555;
 }
 
@@ -39,7 +39,7 @@ limitations under the License.*/
   margin-left: 5px;
 }
 
-.active:after {
+.collapsible.active:after {
   content: "\2212";
 }
 
@@ -302,6 +302,114 @@ h1 {
     /*border-top: 2px #81d742;*/
 }
 
+.viewBtn {
+    background-color: #e0e0e0;
+    color: #444444;
+    border: 1px solid #444444;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-size: 10pt;
+    font-family: 'Open Sans', Helvetica, Arial, sans-serif;
+}
+
+.viewBtn.active {
+    background-color: #444444;
+    color: #ffffff;
+    border-top: 2px solid #6fa30d;
+}
+
+.viewBtn:hover:not(.active) {
+    background-color: #cccccc;
+}
+
+#unfurl_tree {
+    background-color: #fafafa;
+    border: 1px solid #ddd;
+    color: #333;
+}
+
+/* ── D3 visual tree ──────────────────────────────────────────── */
+#unfurl_d3_wrapper {
+    min-height: 640px;
+    max-height: 80vh;
+    background-color: #fafafa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: auto;
+}
+
+#unfurl_d3_wrapper svg {
+    display: block;
+}
+
+#unfurl_d3_wrapper .node-label {
+    font-size: 13px;
+    font-family: 'Open Sans', Helvetica, Arial, sans-serif;
+    dominant-baseline: middle;
+    user-select: none;
+}
+
+#unfurl_d3_wrapper .node-dot {
+    transition: r 0.1s;
+}
+
+#unfurl_d3_wrapper .node-group:hover .node-dot {
+    r: 6;
+}
+
+#unfurl_d3_wrapper .zoom-hint {
+    position: absolute;
+    bottom: 10px;
+    right: 12px;
+    font-size: 0.7rem;
+    color: #888888;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+/* ── D3 tree tooltip ─────────────────────────────────────────── */
+.unfurl-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    max-width: 280px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transition: opacity 0.1s;
+    z-index: 10;
+    text-align: left;
+    color: #333333;
+}
+
+.unfurl-tooltip.visible {
+    opacity: 1;
+}
+
+.unfurl-tooltip .tip-label {
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.unfurl-tooltip .tip-edge {
+    display: block;
+    color: #6fa30d;
+    font-size: 0.75rem;
+    margin-top: 3px;
+}
+
+.unfurl-tooltip .tip-title {
+    display: block;
+    color: #888888;
+    font-size: 0.75rem;
+    margin-top: 3px;
+    word-break: break-all;
+}
+
 #unfurl_graph {
    width: 100%;
    height: 72%;
@@ -348,4 +456,103 @@ vis.vis-configuration-wrapper {
 
 #exampleBox li {
     margin: 18px;
+}
+
+/* ── Dark mode toggle button ─────────────────────────────────── */
+.theme-toggle {
+    background: transparent;
+    border: 1px solid #6fa30d;
+    color: #ffffff;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    line-height: 0;
+    vertical-align: middle;
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.theme-toggle svg {
+    vertical-align: middle;
+    display: inline-block;
+}
+
+/* Show the moon (switch-to-dark) in light mode, the sun (switch-to-light) in dark mode */
+.icon-sun { display: none; }
+html.dark .icon-moon { display: none; }
+html.dark .icon-sun { display: inline-block; }
+
+/* Logo swap: dark-background wordmark only appears in dark mode */
+.logo-dark { display: none; }
+html.dark .logo-light { display: none; }
+html.dark .logo-dark { display: inline-block; }
+
+/* ── Dark mode theme overrides ───────────────────────────────────
+   Purely additive: light mode (the default) is left untouched. The
+   D3 tree paints its own SVG colors in JS — see getColors() and the
+   theme MutationObserver in graph.html, which re-render on toggle. */
+html.dark body {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+html.dark .main-body {
+    background-color: #0d0d0d;
+    color: #e0e0e0;
+    border-color: #333333;
+}
+
+html.dark .content {
+    background-color: #1e1e1e;
+}
+
+html.dark #exampleBox a {
+    color: #b0b0b0;
+}
+
+html.dark #exampleBox a:hover {
+    color: #81d742;
+}
+
+html.dark #unfurl_tree {
+    background-color: #141414;
+    border-color: #333333;
+    color: #dddddd;
+}
+
+html.dark #unfurl_d3_wrapper {
+    background-color: #141414;
+    border-color: #333333;
+}
+
+html.dark .viewBtn {
+    background-color: #2a2a2a;
+    color: #dddddd;
+    border-color: #555555;
+}
+
+html.dark .viewBtn:hover:not(.active) {
+    background-color: #3a3a3a;
+}
+
+html.dark .viewBtn.active {
+    background-color: #81d742;
+    color: #ffffff;
+    border-color: #81d742;
+}
+
+html.dark .unfurl-tooltip {
+    background: #1e1e1e;
+    border-color: #333333;
+    color: #dddddd;
+}
+
+html.dark .unfurl-tooltip .tip-edge {
+    color: #81d742;
+}
+
+html.dark .unfurl-tooltip .tip-title {
+    color: #999999;
 }

@@ -16,7 +16,10 @@
 {% block content %}
 
 <p>
-    <a href="/"><img src="/static/unfurl.png" style="width:600px; padding:20px 40px 40px;"></a>
+    <a href="/">
+        <img src="/static/unfurl.png" class="unfurl-logo logo-light" style="width:600px; padding:20px 40px 40px;">
+        <img src="/static/unfurl_dark.png" class="unfurl-logo logo-dark" style="width:600px; padding:20px 40px 40px;">
+    </a>
 </p>
 
 <form id="topinput">
@@ -24,6 +27,24 @@
   <input type="submit" value="Unfurl!" id="subButton">
 </form>
 
+<div id="viewToggle" style="display:none; margin-bottom: 8px;">
+  <button id="graphViewBtn" class="viewBtn active" onclick="setView('graph')">Graph</button>
+  <button id="d3ViewBtn" class="viewBtn" onclick="setView('d3')">Tree</button>
+  <button id="treeViewBtn" class="viewBtn" onclick="setView('tree')">Text</button>
+</div>
+<div id="unfurl_d3_wrapper" style="display:none; position:relative; max-width:min(1600px,95vw); margin:0 auto;">
+  <div id="unfurl_tooltip" class="unfurl-tooltip"></div>
+</div>
+<div id="unfurl_tree_wrapper" style="display:none; position:relative; max-width:1200px; margin:0 auto;">
+  <button id="copyTreeBtn" onclick="copyTree()" title="Copy tree to clipboard"
+    style="position:absolute; top:8px; right:8px; background:#e0e0e0; border:1px solid #aaa; border-radius:3px; padding:5px 7px; cursor:pointer; line-height:1;">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5.5" y="5.5" width="9" height="9" rx="1"/>
+      <path d="M3 10.5H2.5a1 1 0 01-1-1v-7a1 1 0 011-1h7a1 1 0 011 1V3"/>
+    </svg>
+  </button>
+  <pre id="unfurl_tree" style="text-align:left; font-family:'Cascadia Code','Fira Code','Consolas',monospace; font-size:10pt; padding:20px; overflow-x:auto; white-space:pre; line-height:1.5;"></pre>
+</div>
 <div id="unfurl_graph">
     <div id="exampleBox">
         <h2>Welcome to Unfurl! Here are some examples:</h2>
@@ -203,15 +224,41 @@
           };
           var network = new vis.Network(container, unfurl, options);
 
+          // Insecure-context (LAN IP, non-https) browsers do not expose
+          // navigator.clipboard. Fall back to the legacy execCommand path so
+          // copy still works when the page is loaded over http://192.168.x.x.
+          function copyToClipboard(text) {
+            if (window.isSecureContext && navigator.clipboard) {
+              return navigator.clipboard.writeText(text);
+            }
+            return new Promise(function(resolve, reject) {
+              var ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.focus(); ta.select();
+              try {
+                document.execCommand('copy') ? resolve() : reject();
+              } catch (e) { reject(e); }
+              document.body.removeChild(ta);
+            });
+          }
+
           network.on("doubleClick", function(params) {
             params.event.preventDefault();
             var selectedNodeId = this.getNodeAt(params.pointer.DOM);
             if (selectedNodeId) {
                 var selectedNode = data.nodes[selectedNodeId-1];
                 console.log("Copied '" + selectedNode.label + "' to clipboard");
-                navigator.clipboard.writeText(selectedNode.label);
+                copyToClipboard(selectedNode.label);
               }
           });
+
+          // Build the text tree, render the visual tree, and show the view toggle
+          window.unfurlTreeText = buildTextTree(data.nodes, data.edges);
+          renderVisualTree(data.nodes, data.edges);
+          document.getElementById('viewToggle').style.display = 'block';
 
       }).catch(err => {
         // What do when the request fails
@@ -226,6 +273,424 @@
       } else {
         visConfig.style.display = "block";
       }
+    }
+
+    function buildTextTree(nodes, edges) {
+        // Build a node map and children map from vis.js data
+        var nodeMap = {};
+        nodes.forEach(function(n) { nodeMap[n.id] = n; });
+
+        var children = {};
+        edges.forEach(function(e) {
+            if (!children[e.from]) children[e.from] = [];
+            children[e.from].push({id: e.to, edgeLabel: e.label || ''});
+        });
+
+        // Find root (node with no incoming edge)
+        var childIds = new Set(edges.map(function(e) { return e.to; }));
+        var rootId = null;
+        for (var i = 0; i < nodes.length; i++) {
+            if (!childIds.has(nodes[i].id)) { rootId = nodes[i].id; break; }
+        }
+        if (rootId === null && nodes.length > 0) rootId = nodes[0].id;
+
+        function renderNode(nodeId, indent, isLast, isRoot) {
+            var node = nodeMap[nodeId];
+            if (!node) return '';
+            var label = node.label || '(no label)';
+            var line = '';
+
+            if (isRoot) {
+                line = label;
+            } else {
+                // Find the edge label for this node
+                var edgeLabel = '';
+                edges.forEach(function(e) {
+                    if (e.to === nodeId) edgeLabel = e.label || '';
+                });
+                var connector = isLast ? '\u2514' : '\u251C';
+                var edgePart = edgeLabel ? '(' + edgeLabel + ')' : '';
+                line = indent + connector + '\u2500' + edgePart + '\u2500 ' + label;
+            }
+
+            var result = line + '\n';
+            var kids = children[nodeId] || [];
+            for (var i = 0; i < kids.length; i++) {
+                var childIndent = isRoot ? ' ' : indent + (isLast ? '   ' : '|  ');
+                result += renderNode(kids[i].id, childIndent, i === kids.length - 1, false);
+            }
+            return result;
+        }
+
+        return rootId !== null ? renderNode(rootId, '', true, true) : '';
+    }
+
+    function setView(view) {
+        var graphEl = document.getElementById('unfurl_graph');
+        var d3Wrapper = document.getElementById('unfurl_d3_wrapper');
+        var treeWrapper = document.getElementById('unfurl_tree_wrapper');
+        var treeEl = document.getElementById('unfurl_tree');
+        var graphBtn = document.getElementById('graphViewBtn');
+        var d3Btn = document.getElementById('d3ViewBtn');
+        var treeBtn = document.getElementById('treeViewBtn');
+        var optionsBox = document.getElementById('optionsBox');
+
+        // Hide all views and clear active state
+        graphEl.style.display = 'none';
+        d3Wrapper.style.display = 'none';
+        treeWrapper.style.display = 'none';
+        optionsBox.style.display = 'none';
+        [graphBtn, d3Btn, treeBtn].forEach(function (b) { if (b) b.classList.remove('active'); });
+
+        if (view === 'graph') {
+            graphEl.style.display = 'block';
+            optionsBox.style.display = 'block';
+            graphBtn.classList.add('active');
+        } else if (view === 'd3') {
+            d3Wrapper.style.display = 'block';
+            d3Btn.classList.add('active');
+            // clientWidth is 0 while display:none, so (re)layout once visible
+            if (d3Wrapper._rerender) d3Wrapper._rerender();
+        } else {
+            treeWrapper.style.display = 'block';
+            treeEl.textContent = window.unfurlTreeText || '(no data)';
+            treeBtn.classList.add('active');
+        }
+    }
+
+    function renderVisualTree(nodes, edges) {
+        var wrapper = document.getElementById('unfurl_d3_wrapper');
+        if (!wrapper || typeof d3 === 'undefined') return;
+
+        // Clear any previous render, its resize handler, and its theme observer
+        if (wrapper._resizeHandler) { window.removeEventListener('resize', wrapper._resizeHandler); wrapper._resizeHandler = null; }
+        if (wrapper._themeObserver) { wrapper._themeObserver.disconnect(); wrapper._themeObserver = null; }
+        wrapper.querySelectorAll('svg, .zoom-hint').forEach(function (el) { el.remove(); });
+
+        // ── Build hierarchy ───────────────────────────────────────────
+        var nodeMap = {};
+        nodes.forEach(function (n) {
+            nodeMap[n.id] = {
+                id: n.id,
+                label: (n.label || '').replace(/\n/g, ' '),
+                title: n.title ? n.title.replace(/<[^>]*>/g, '') : '',
+                _edgeLabel: '',
+                children: [],
+                _hiddenChildren: null,
+            };
+        });
+
+        var childIds = new Set();
+        edges.forEach(function (e) {
+            if (nodeMap[e.from] && nodeMap[e.to]) {
+                nodeMap[e.from].children.push(nodeMap[e.to]);
+                nodeMap[e.to]._edgeLabel = e.label || '';
+                childIds.add(e.to);
+            }
+        });
+
+        var rootData = null;
+        for (var i = 0; i < nodes.length; i++) {
+            if (!childIds.has(nodes[i].id)) { rootData = nodeMap[nodes[i].id]; break; }
+        }
+        if (!rootData && nodes.length) rootData = nodeMap[nodes[0].id];
+        if (!rootData) return;
+
+        var root = d3.hierarchy(rootData, function (d) { return d.children; });
+
+        // ── Layout constants ──────────────────────────────────────────
+        var ROW_H  = 30;
+        var LINE_H = 16;  // per-line height for wrapped labels
+        var CHAR_W = 7.2; // approx width of a 13px monospaced-ish char
+        var DOT_R  = 4.5;
+        var PAD    = { top: 16, left: 16, right: 16 };
+        var LABEL_X = DOT_R * 2 + 6;
+
+        // Pill badge dimensions
+        var BH   = 16;   // pill height
+        var BPX  = 6;    // horizontal padding inside pill
+        var STUB = 10;   // line stub on each side of pill
+        var DEFAULT_INDENT = 26; // indent when there is no edge label
+
+        function wrapLabel(text, availPx) {
+            var maxChars = Math.max(12, Math.floor(availPx / CHAR_W));
+            if (!text) return [''];
+            if (text.length <= maxChars) return [text];
+            var lines = [];
+            var remaining = text;
+            while (remaining.length > maxChars) {
+                var chunk = remaining.slice(0, maxChars);
+                var sp = chunk.lastIndexOf(' ');
+                if (sp > maxChars * 0.5) {
+                    lines.push(remaining.slice(0, sp));
+                    remaining = remaining.slice(sp + 1);
+                } else {
+                    lines.push(chunk);
+                    remaining = remaining.slice(maxChars);
+                }
+            }
+            if (remaining) lines.push(remaining);
+            return lines;
+        }
+
+        // Colours resolved fresh on each render so the tree follows the
+        // light/dark theme toggle. BG is used for pill fills and the hollow
+        // dots of expanded parents, so it matches the wrapper background.
+        function getColors() {
+            var dark = document.documentElement.classList.contains('dark');
+            return dark
+                ? { LINE: '#cccccc', BRAND: '#81d742', FG: '#e0e0e0', MUTED: '#999999', BG: '#141414' }
+                : { LINE: '#444444', BRAND: '#6fa30d', FG: '#333333', MUTED: '#888888', BG: '#ffffff' };
+        }
+
+        // ── SVG setup ─────────────────────────────────────────────────
+        var svg = d3.select(wrapper).append('svg');
+        var gRoot = svg.append('g');
+
+        // Tooltip
+        var tooltip = document.getElementById('unfurl_tooltip');
+
+        function showTip(event, d) {
+            var lines = ['<span class="tip-label">' + d.data.label + '</span>'];
+            if (d.data._edgeLabel) lines.push('<span class="tip-edge">' + d.data._edgeLabel + '</span>');
+            if (d.data.title && d.data.title !== d.data.label)
+                lines.push('<span class="tip-title">' + d.data.title + '</span>');
+            tooltip.innerHTML = lines.join('');
+            tooltip.classList.add('visible');
+        }
+        function moveTip(event) {
+            var rect = wrapper.getBoundingClientRect();
+            var x = event.clientX - rect.left + 12 + wrapper.scrollLeft;
+            var y = event.clientY - rect.top  - 10 + wrapper.scrollTop;
+            if (x + 290 > wrapper.scrollLeft + rect.width) x = x - 290 - 24;
+            tooltip.style.left = x + 'px';
+            tooltip.style.top  = y + 'px';
+        }
+        function hideTip() { tooltip.classList.remove('visible'); }
+
+        // ── Render (called on init + after collapse/expand + resize) ──
+        function render() {
+            var C = getColors();
+            gRoot.selectAll('*').remove();
+
+            var wrapperW = wrapper.clientWidth || 900;
+
+            // Flatten visible nodes with positions.
+            // _x is absolute x-offset (from PAD.left) based on each edge's own pill width.
+            // _y is cumulative vertical position; rows can grow when labels wrap.
+            var visible = [];
+            var yCursor = 0;
+            (function walk(node, depth) {
+                node._depth = depth;
+                if (!node.parent) {
+                    node._x = 0;
+                } else {
+                    var pillW = node.data._edgeLabel
+                        ? Math.max(node.data._edgeLabel.length * 7 + BPX * 2, 26) + STUB * 2
+                        : DEFAULT_INDENT;
+                    node._x = node.parent._x + DOT_R + pillW;
+                }
+                var labelStartX = PAD.left + node._x + LABEL_X;
+                var avail = wrapperW - labelStartX - PAD.right;
+                node._lines = wrapLabel(node.data.label || '', avail);
+                node._rowH  = Math.max(ROW_H, node._lines.length * LINE_H + 12);
+                node._y     = yCursor;
+                yCursor += node._rowH;
+                visible.push(node);
+                if (node.children) node.children.forEach(function (c) { walk(c, depth + 1); });
+            })(root, 0);
+
+            // ── Connector lines ───────────────────────────────────────
+            var gLines = gRoot.append('g').attr('class', 'links');
+
+            visible.forEach(function (d) {
+                if (!d.parent) return;
+
+                var px = PAD.left + d.parent._x + DOT_R;
+                var py = PAD.top  + d.parent._y + DOT_R;
+                var cx = PAD.left + d._x;
+                var cy = PAD.top  + d._y + DOT_R;
+
+                var siblings = d.parent.children || [];
+
+                // Vertical segment (drawn once per parent, from its dot to its last child)
+                if (siblings[0] === d) {
+                    var lastSib = siblings[siblings.length - 1];
+                    gLines.append('line')
+                        .attr('x1', px).attr('y1', py)
+                        .attr('x2', px).attr('y2', PAD.top + lastSib._y + DOT_R)
+                        .attr('stroke', C.LINE).attr('stroke-width', 1.5);
+                }
+
+                // Horizontal segment — pill badge centred on the connector if edge label exists
+                if (d.data._edgeLabel) {
+                    var BW   = Math.max(d.data._edgeLabel.length * 7 + BPX * 2, 26);
+                    var midX = (px + cx) / 2;
+                    var bx   = midX - BW / 2;
+                    var by   = cy - BH / 2;
+                    // Left stub
+                    gLines.append('line')
+                        .attr('x1', px).attr('y1', cy)
+                        .attr('x2', bx).attr('y2', cy)
+                        .attr('stroke', C.LINE).attr('stroke-width', 1.5);
+                    // Right stub
+                    gLines.append('line')
+                        .attr('x1', bx + BW).attr('y1', cy)
+                        .attr('x2', cx).attr('y2', cy)
+                        .attr('stroke', C.LINE).attr('stroke-width', 1.5);
+                    // Pill background
+                    gLines.append('rect')
+                        .attr('x', bx).attr('y', by)
+                        .attr('width', BW).attr('height', BH)
+                        .attr('rx', BH / 2).attr('ry', BH / 2)
+                        .attr('fill', C.BG)
+                        .attr('stroke', C.MUTED).attr('stroke-width', 1);
+                    // Pill text
+                    gLines.append('text')
+                        .attr('x', midX).attr('y', cy)
+                        .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+                        .attr('font-size', '10px').attr('font-family', 'inherit')
+                        .attr('fill', C.MUTED).attr('pointer-events', 'none')
+                        .text(d.data._edgeLabel);
+                } else {
+                    gLines.append('line')
+                        .attr('x1', px).attr('y1', cy)
+                        .attr('x2', cx).attr('y2', cy)
+                        .attr('stroke', C.LINE).attr('stroke-width', 1.5);
+                }
+            });
+
+            // ── Nodes ─────────────────────────────────────────────────
+            var gNodes = gRoot.append('g').attr('class', 'nodes');
+
+            var nodeGroups = gNodes.selectAll('.node-group')
+                .data(visible, function (d) { return d.data.id; })
+                .enter().append('g')
+                .attr('class', 'node-group')
+                .attr('transform', function (d) {
+                    return 'translate(' + (PAD.left + d._x) + ',' + (PAD.top + d._y) + ')';
+                })
+                .style('cursor', function (d) {
+                    return (d.children && d.children.length) || d.data._hiddenChildren ? 'pointer' : 'default';
+                });
+
+            // Dots
+            nodeGroups.append('circle')
+                .attr('class', 'node-dot')
+                .attr('cx', DOT_R).attr('cy', DOT_R).attr('r', DOT_R)
+                .attr('fill', function (d) {
+                    if (d.data._hiddenChildren) return C.BRAND;        // collapsed — filled brand
+                    if (d.children && d.children.length) return C.BG;  // expanded parent — hollow
+                    return C.MUTED;                                    // leaf
+                })
+                .attr('stroke', function (d) {
+                    return (d.children && d.children.length) ? C.BRAND : C.LINE;
+                })
+                .attr('stroke-width', 1.5);
+
+            // Labels (wrapped into tspans)
+            var labelText = nodeGroups.append('text')
+                .attr('class', 'node-label')
+                .attr('x', LABEL_X).attr('y', DOT_R)
+                .attr('fill', C.FG);
+            labelText.each(function (d) {
+                var sel = d3.select(this);
+                d._lines.forEach(function (line, i) {
+                    sel.append('tspan')
+                        .attr('x', LABEL_X)
+                        .attr('dy', i === 0 ? 0 : LINE_H)
+                        .text(line);
+                });
+            });
+
+            // Click — collapse / expand
+            nodeGroups.on('click', function (event, d) {
+                event.stopPropagation();
+                if (d.data._hiddenChildren) {
+                    d.children = d.data._hiddenChildren.map(function (c) { return d3.hierarchy(c.data, function (n) { return n.children; }); });
+                    d.children.forEach(function (c) { c.parent = d; });
+                    d.data._hiddenChildren = null;
+                } else if (d.children && d.children.length) {
+                    d.data._hiddenChildren = d.children;
+                    d.children = null;
+                } else {
+                    return;
+                }
+                hideTip();
+                render();
+                sizeSvgToContent();
+            });
+
+            // Tooltips
+            nodeGroups
+                .on('mouseover', showTip)
+                .on('mousemove', moveTip)
+                .on('mouseout',  hideTip);
+        }
+
+        function sizeSvgToContent() {
+            requestAnimationFrame(function () {
+                var bb = gRoot.node().getBBox();
+                var w = Math.max(wrapper.clientWidth, Math.ceil(bb.x + bb.width + PAD.right));
+                var h = Math.ceil(bb.y + bb.height + PAD.top);
+                svg.attr('width', w).attr('height', h);
+            });
+        }
+
+        render();
+        sizeSvgToContent();
+
+        // Expose so setView('d3') can re-render once the wrapper becomes visible
+        // (clientWidth is 0 while display:none, so initial layout is unreliable)
+        wrapper._rerender = function () { render(); sizeSvgToContent(); };
+
+        // ── Re-wrap on resize ─────────────────────────────────────────
+        var resizeHandler = function () { render(); sizeSvgToContent(); };
+        window.addEventListener('resize', resizeHandler);
+        wrapper._resizeHandler = resizeHandler;
+
+        // ── Re-render on dark/light theme toggle ──────────────────────
+        var themeObserver = new MutationObserver(function () { render(); sizeSvgToContent(); });
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        wrapper._themeObserver = themeObserver;
+
+        // Hint
+        var hint = document.createElement('div');
+        hint.className = 'zoom-hint';
+        hint.textContent = 'Click node to collapse/expand';
+        wrapper.appendChild(hint);
+    }
+
+    // See note above copyToClipboard inside the network handler — the
+    // navigator.clipboard API is unavailable on non-https LAN IPs, so we
+    // provide a fallback. Defined again here because this function lives
+    // in a different script scope from the network-handler version.
+    function copyToClipboardTop(text) {
+        if (window.isSecureContext && navigator.clipboard) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function(resolve, reject) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            try {
+                document.execCommand('copy') ? resolve() : reject();
+            } catch (e) { reject(e); }
+            document.body.removeChild(ta);
+        });
+    }
+
+    function copyTree() {
+        var text = window.unfurlTreeText || '';
+        var btn = document.getElementById('copyTreeBtn');
+        var originalHTML = btn.innerHTML;
+        copyToClipboardTop(text).then(function() {
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.innerHTML = originalHTML; }, 1500);
+        });
     }
 
 </script>

@@ -16,7 +16,19 @@
 <head>
     <title>unfurl</title>
 
+    <!-- Apply the saved theme before first paint to avoid a flash of the wrong colors. -->
+    <script type="text/javascript">
+        (function () {
+            try {
+                if (localStorage.getItem('unfurl-theme') === 'dark') {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) { /* localStorage may be unavailable (private mode); default to light */ }
+        })();
+    </script>
+
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
     <link rel="stylesheet" type="text/css" href="/static/styles.css">
 
@@ -31,6 +43,12 @@
         <table class="top-bar-table">
             <tr>
                 <td><a href="/"><span class="logo-text">unfurl&nbsp</span></a></td>
+                <td style="text-align:right;">
+                    <button id="themeToggle" class="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+                        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    </button>
+                </td>
             </tr>
         </table>
     </header>
@@ -39,5 +57,16 @@
         {% block content %}{% endblock %}
     </div>
     </div>
+
+    <script type="text/javascript">
+        (function () {
+            var btn = document.getElementById('themeToggle');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                var isDark = document.documentElement.classList.toggle('dark');
+                try { localStorage.setItem('unfurl-theme', isDark ? 'dark' : 'light'); } catch (e) {}
+            });
+        })();
+    </script>
     </body>
 </html>
