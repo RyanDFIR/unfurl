@@ -27,6 +27,7 @@ __all__ = [
     "parse_mailto",
     "parse_metasploit",
     "parse_protobuf",
+    "parse_safelinks",
     "parse_shortlink",
     "parse_site_defs",
     "parse_sonyflake",
