@@ -476,10 +476,12 @@ vis.vis-configuration-wrapper {
 
 .theme-toggle svg {
     vertical-align: middle;
-    display: inline-block;
 }
 
-/* Show the moon (switch-to-dark) in light mode, the sun (switch-to-light) in dark mode */
+/* Show the moon (switch-to-dark) in light mode, the sun (switch-to-light) in dark mode.
+   Set display on the icon classes (not `.theme-toggle svg`) so these rules aren't
+   overridden by that more-specific selector. */
+.icon-moon { display: inline-block; }
 .icon-sun { display: none; }
 html.dark .icon-moon { display: none; }
 html.dark .icon-sun { display: inline-block; }

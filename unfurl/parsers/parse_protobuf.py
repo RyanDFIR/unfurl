@@ -55,6 +55,14 @@ b64_proto_edge = {
     'label': 'b64+proto'
 }
 
+b32_proto_edge = {
+    'color': {
+        'color': '#2D9A58'
+    },
+    'title': 'Parsed from base32, then as a protobuf',
+    'label': 'b32+proto'
+}
+
 wire_types = {
     'int': '<b>varint (0)</b>. <br><br>It is displayed here as an int, but it could orginially have '
            'been <br>a int32, int64, uint32, uint64, sint32, sint64, bool, or enum.',
@@ -256,10 +264,6 @@ def run(unfurl, node):
     if skip:
         return
 
-    if len(node.value) % 4 == 1:
-        # A valid b64 string will not be this length
-        return False
-
     if node.data_type.startswith(('uuid', 'hash')):
         return False
 
@@ -271,47 +275,49 @@ def run(unfurl, node):
     all_digits_m = utils.digits_and_slash_re.fullmatch(node.value)
     all_letters_m = utils.letters_and_slash_re.fullmatch(node.value)
 
-    if hex_m and not (all_digits_m or all_letters_m):
-        decoded = bytes.fromhex(node.value)
-        if context and decode_with_compiled_proto(unfurl, node, decoded, context, hex_proto_edge):
+    # Build the ordered list of (decoded_bytes, edge) candidates to try as a
+    # protobuf. Exactly one of hex/base64 is selected as the primary (same
+    # precedence as before); base32 is appended as a fallback so base32-encoded
+    # protobufs decode too. Base32's alphabet is a subset of base64's, so a
+    # base32 value also matches the b64 regex -- without this fallback it would
+    # be claimed (and fail) as base64. We try each candidate in order and emit on
+    # the first that decodes, so a failed primary no longer ends the parser.
+    attempts = []
+
+    if not (all_digits_m or all_letters_m):
+        # A valid b64 string is never length % 4 == 1 (hex is always even-length,
+        # so this guard only affects the base64 candidates).
+        b64_ok = len(node.value) % 4 != 1
+        if hex_m:
+            try:
+                attempts.append((bytes.fromhex(node.value), hex_proto_edge))
+            except ValueError:
+                pass
+        elif urlsafe_b64_m and b64_ok:
+            try:
+                attempts.append(
+                    (base64.urlsafe_b64decode(unfurl.add_b64_padding(node.value)), b64_proto_edge))
+            except Exception:
+                pass
+        elif standard_b64_m and b64_ok:
+            try:
+                attempts.append(
+                    (base64.b64decode(unfurl.add_b64_padding(node.value)), b64_proto_edge))
+            except Exception:
+                pass
+
+        b32_decoded = utils.try_base32_decode(node.value)
+        if b32_decoded is not None:
+            attempts.append((b32_decoded, b32_proto_edge))
+
+    for decoded, edge in attempts:
+        if context and decode_with_compiled_proto(unfurl, node, decoded, context, edge):
             return
         try:
             protobuf_values, protobuf_values_types = blackboxprotobuf.decode_message(decoded)
-            parse_protobuf_into_nodes(protobuf_values, protobuf_values_types, hex_proto_edge, context)
-            return
-
-        # This will often fail for a wide array of reasons when it tries to parse a non-pb as a pb
+        # This will often fail for a wide array of reasons when it tries to parse
+        # a non-pb as a pb; try the next candidate instead of giving up.
         except Exception:
-            return
-
-    elif urlsafe_b64_m and not (all_digits_m or all_letters_m):
-        try:
-            decoded = base64.urlsafe_b64decode(unfurl.add_b64_padding(node.value))
-        except Exception:
-            return
-        if context and decode_with_compiled_proto(unfurl, node, decoded, context, b64_proto_edge):
-            return
-        try:
-            protobuf_values, protobuf_values_types = blackboxprotobuf.decode_message(decoded)
-            parse_protobuf_into_nodes(protobuf_values, protobuf_values_types, b64_proto_edge, context)
-            return
-
-        # This will often fail for a wide array of reasons when it tries to parse a non-pb as a pb
-        except Exception:
-            return
-
-    elif standard_b64_m and not (all_digits_m or all_letters_m):
-        try:
-            decoded = base64.b64decode(unfurl.add_b64_padding(node.value))
-        except Exception:
-            return
-        if context and decode_with_compiled_proto(unfurl, node, decoded, context, b64_proto_edge):
-            return
-        try:
-            protobuf_values, protobuf_values_types = blackboxprotobuf.decode_message(decoded)
-            parse_protobuf_into_nodes(protobuf_values, protobuf_values_types, b64_proto_edge, context)
-            return
-
-        # This will often fail for a wide array of reasons when it tries to parse a non-pb as a pb
-        except Exception:
-            return
+            continue
+        parse_protobuf_into_nodes(protobuf_values, protobuf_values_types, edge, context)
+        return

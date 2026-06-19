@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2026 Ryan Benson
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+import binascii
 from unfurl import utils
 
 b64_edge = {
@@ -29,6 +30,28 @@ def run(unfurl, node):
     if not isinstance(node.value, str):
         return False
 
+    # If a node is explicitly labeled as base64, decode it directly and skip the
+    # auto-detection heuristics (length/regex filters and the printable-only gate).
+    if node.data_type == 'base64':
+        stripped = node.value.rstrip('=')
+        if len(stripped) % 4 == 1:
+            return
+        padded = stripped + ('=' * (-len(stripped) % 4))
+        try:
+            if '-' in node.value or '_' in node.value:
+                decoded = base64.urlsafe_b64decode(padded)
+            else:
+                decoded = base64.b64decode(padded, validate=True)
+        except (binascii.Error, ValueError):
+            return
+        if utils.is_printable_ascii(decoded):
+            unfurl.add_to_queue(data_type='string', key=None, value=decoded.decode('ascii'),
+                                parent_id=node.node_id, incoming_edge_config=b64_edge)
+        elif decoded:
+            unfurl.add_to_queue(data_type='bytes', key=None, value=decoded,
+                                parent_id=node.node_id, incoming_edge_config=b64_edge)
+        return
+
     if len(node.value) % 4 == 1:
         # A valid b64 string will not be this length
         return False
@@ -42,7 +65,7 @@ def run(unfurl, node):
     all_letters_m = utils.letters_re.fullmatch(node.value)
 
     # Long integers and normal words pass the b64 regex, but we don't want those here.
-    # It's technically valid base64, but to reduce false positives we're filtering them out.
+    # It's technically valid base64, but to reduce false positives, we're filtering them out.
     if long_int_m or all_letters_m:
         return
 
@@ -56,23 +79,13 @@ def run(unfurl, node):
     elif standard_b64_m:
         decoded = base64.b64decode(padded_value)
 
-    if decoded == node.value or not decoded:
+    # Require printable output. This limits the plugin to ASCII strings that were
+    # base64-encoded; a wrong guess almost always decodes to control-character
+    # bytes (which a plain ASCII decode would still accept). It also keeps base64
+    # from claiming base32 values that decode to garbage. Other things can be
+    # base64-encoded (gzip, protobufs), but those are handled by their own parsers.
+    if not utils.is_printable_ascii(decoded):
         return
 
-    try:
-        # This limits the plugin to only decoding ASCII string that were base64
-        # encoded. Obviously other things could be encoded, but it's a start.
-        str_decoded = decoded.decode('ascii', errors='strict')
-
-    # This will happen a lot with things that aren't really b64 encoded, or
-    # with things that are b64-encoded, but the results are not ASCII
-    # (like gzip or protobufs).
-    except UnicodeDecodeError:
-        # Show the resulting bytes from base64 inflating. Disabled for now,
-        # as it's too noisy.
-        # unfurl.add_to_queue(data_type='bytes', key=None, value=decoded,
-        #                parent_id=node.node_id, incoming_edge_config=b64_edge)
-        return
-
-    unfurl.add_to_queue(data_type='string', key=None, value=str_decoded,
+    unfurl.add_to_queue(data_type='string', key=None, value=decoded.decode('ascii'),
                         parent_id=node.node_id, incoming_edge_config=b64_edge)

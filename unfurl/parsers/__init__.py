@@ -1,4 +1,6 @@
 __all__ = [
+    "parse_base32",
+    "parse_base58",
     "parse_base64",
     "parse_bing",
     "parse_brave",

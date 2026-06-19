@@ -33,6 +33,34 @@ b64_zip_edge = {
     'label': 'b64+zip'
 }
 
+b32_zip_edge = {
+    'color': {
+        'color': '#2C63FF'
+    },
+    'title': 'Compression-related Parsing Functions',
+    'label': 'b32+zip'
+}
+
+
+def _queue_inflated(unfurl, node, inflated_bytes, edge, hover):
+    """Add a node for decompressed bytes: a string if it's printable ASCII that
+    looks like URL-ish data, otherwise the raw bytes for a downstream parser."""
+    try:
+        inflated_str = inflated_bytes.decode('ascii', errors='strict')
+        if re.fullmatch(r'[\w=&%\.-]+', inflated_str):
+            unfurl.add_to_queue(
+                data_type='string', key=None, value=inflated_str,
+                parent_id=node.node_id, hover=hover, incoming_edge_config=edge)
+            return
+    except UnicodeDecodeError:
+        # If we couldn't decode the inflated bytes as ASCII, that's ok; we'll
+        # just show the raw inflated bytes below.
+        pass
+
+    unfurl.add_to_queue(
+        data_type='bytes', key=None, value=inflated_bytes, parent_id=node.node_id,
+        hover=hover, incoming_edge_config=edge)
+
 
 def run(unfurl, node):
 
@@ -53,54 +81,38 @@ def run(unfurl, node):
     if node.data_type in ('url.scheme', 'url.host', 'url.domain', 'url.tld'):
         return
 
-    # This checks for base64 encoding, which is often used before compression. Initially, the base64 decoding was
-    # in parse_base64.py, but the intermediary node seemed like not useful clutter. I moved it here and combined
-    # the parser into b64+zlib
-    if len(node.value) % 4 == 1:
-        # A valid b64 string will not be this length
-        return False
+    # Collect candidate decodings to try inflating. base64 is the long-standing
+    # case (often used before compression); base32 is also tried so base32-encoded
+    # compressed payloads inflate too. Initially the base64 decoding was in
+    # parse_base64.py, but the intermediary (decoded-but-still-compressed) node was
+    # not useful clutter, so the decode happens here and we only emit on success.
+    attempts = []
 
-    urlsafe_b64_m = utils.urlsafe_b64_re.fullmatch(node.value)
-    standard_b64_m = utils.standard_b64_re.fullmatch(node.value)
-    long_int_m = utils.long_int_re.fullmatch(node.value)
+    # base64 candidate. A valid b64 string is never length % 4 == 1, and long
+    # integers pass the b64 regex but aren't what we want here.
+    if len(node.value) % 4 != 1 and not utils.long_int_re.fullmatch(node.value):
+        padded_value = unfurl.add_b64_padding(node.value)
+        if padded_value:
+            decoded = None
+            if utils.urlsafe_b64_re.fullmatch(node.value):
+                decoded = base64.urlsafe_b64decode(padded_value)
+            elif utils.standard_b64_re.fullmatch(node.value):
+                decoded = base64.b64decode(padded_value)
+            if decoded:
+                attempts.append((decoded, b64_zip_edge,
+                                 'This data was base64-decoded, then zlib inflated'))
 
-    # Long integers pass the b64 regex, but we don't want those here.
-    if long_int_m:
+    # base32 candidate.
+    b32_decoded = utils.try_base32_decode(node.value)
+    if b32_decoded:
+        attempts.append((b32_decoded, b32_zip_edge,
+                         'This data was base32-decoded, then zlib inflated'))
+
+    for decoded, edge, hover in attempts:
+        try:
+            inflated_bytes = utils.safe_decompress(decoded)
+        except (zlib.error, ValueError):
+            # Can't inflate it (or it exceeds the size limit); try the next candidate.
+            continue
+        _queue_inflated(unfurl, node, inflated_bytes, edge, hover)
         return
-
-    decoded = None
-    padded_value = unfurl.add_b64_padding(node.value)
-    if not padded_value:
-        return
-
-    if urlsafe_b64_m:
-        decoded = base64.urlsafe_b64decode(unfurl.add_b64_padding(node.value))
-    elif standard_b64_m:
-        decoded = base64.b64decode(unfurl.add_b64_padding(node.value))
-
-    if decoded == node.value or not decoded:
-        return
-
-    try:
-        inflated_bytes = utils.safe_decompress(decoded)
-    except (zlib.error, ValueError):
-        # If we can't inflate it or it exceeds size limit, bail on this parser.
-        return
-
-    try:
-        inflated_str = inflated_bytes.decode('ascii', errors='strict')
-        if re.fullmatch(r'[\w=&%\.-]+', inflated_str):
-            unfurl.add_to_queue(
-                data_type='string', key=None, value=inflated_str,
-                parent_id=node.node_id,
-                hover='This data was base64-decoded, then zlib inflated',
-                incoming_edge_config=b64_zip_edge)
-            return
-    except UnicodeDecodeError:
-        # If we couldn't decode the inflated bytes as ASCII, that's ok; we'll
-        # just show the raw inflated bytes below.
-        pass
-
-    unfurl.add_to_queue(
-        data_type='bytes', key=None, value=inflated_bytes, parent_id=node.node_id,
-        hover='This data was inflated using zlib', incoming_edge_config=b64_zip_edge)
