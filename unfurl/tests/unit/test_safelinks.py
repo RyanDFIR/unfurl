@@ -82,8 +82,8 @@ class TestSafeLinks(unittest.TestCase):
 
 
         # sdata labeled as a signature
-        self.assertTrue(any('Signature parameter' in l for l in labels),
-                        f'sdata not labeled as HMAC; labels={labels}')
+        self.assertTrue(any('Signature Data' in l for l in labels),
+                        f'sdata not labeled as a signature; labels={labels}')
 
     def test_safelinks_double_encoded_data(self):
         """Some captured Safe Links have a double-URL-encoded `data` field where
@@ -116,7 +116,7 @@ class TestSafeLinks(unittest.TestCase):
         test.parse_queue()
 
         labels = self._node_labels(test)
-        self.assertFalse(any('Signature parameter' in l for l in labels),
+        self.assertFalse(any('Signature Data' in l for l in labels),
                          'SafeLinks parser fired on non-SafeLinks domain')
         self.assertFalse(any('Recipient:' in l for l in labels),
                          'SafeLinks parser fired on non-SafeLinks domain')
