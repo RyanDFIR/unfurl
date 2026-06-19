@@ -236,6 +236,7 @@ def decode_datetime_ticks(ticks):
       2038: 642815136000000000
 
     """
+    ticks = int(ticks)
     seconds = (ticks - 621355968000000000) / 10000000
     converted_ts = datetime.datetime.fromtimestamp(seconds, tz=datetime.UTC)
 
