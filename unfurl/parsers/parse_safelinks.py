@@ -15,12 +15,8 @@
 # References:
 #   Microsoft's Safe Links feature docs (describes behavior, not URL format):
 #     https://learn.microsoft.com/en-us/defender-office-365/safe-links-about
-#   forensicdave/unsafelink - community reverse-engineering of the `data` field;
-#   source of the original position->label mapping (some labels later corrected
-#   against a 20k-URL corpus audit, see docs/safelinks-format.md):
+#   forensicdave/unsafelink - community reverse-engineering of the `data` field
 #     https://github.com/forensicdave/unsafelink
-#   docs/safelinks-format.md - corpus-based audit (20,546 URLs) that
-#   produced and corrected the position labels used here.
 
 import urllib.parse
 
