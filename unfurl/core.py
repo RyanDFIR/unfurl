@@ -302,19 +302,6 @@ class Unfurl:
         return new_node.node_id
 
     @staticmethod
-    def add_b64_padding(encoded_string):
-        encoded_string = encoded_string.rstrip('=')
-        remainder = len(encoded_string) % 4
-        if remainder == 1:
-            return False
-        elif remainder == 2:
-            return f'{encoded_string}=='
-        elif remainder == 3:
-            return f'{encoded_string}='
-        else:
-            return encoded_string
-
-    @staticmethod
     def check_if_int_between(value, low, high):
         try:
             value = int(value)

@@ -92,3 +92,7 @@ def command_line_interface():
                     detailed=args.detailed, output_filter=args.filter))
             print()
             unfurl_instance.reset_graph_state()
+
+
+if __name__ == '__main__':
+    command_line_interface()

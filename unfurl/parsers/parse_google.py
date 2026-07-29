@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 import datetime
 
 import json
@@ -72,16 +71,14 @@ def parse_aqs(aqs: str) -> dict:
     return parsed
 
 
-def parse_ei(ei):
-    """Parse ei parameters from Google searches.
+def parse_ei(decoded):
+    """Parse (base64-decoded) ei parameters from Google searches.
 
     Based on work by:
       Adrian Leong (cheeky4n6monkey@gmail.com) -
         https://github.com/cheeky4n6monkey/4n6-scripts/blob/master/google-ei-time.py
       Kevin Jones - https://deedpolloffice.com/blog/articles/decoding-ei-parameter
     """
-
-    decoded = base64.urlsafe_b64decode(ei)
 
     # grab 1st 4 bytes and treat as LE unsigned int
     timestamp = struct.unpack('<i', decoded[0:4])[0]
@@ -282,16 +279,14 @@ def run(unfurl, node):
                         parent_id=node.node_id, incoming_edge_config=google_edge)
 
         elif node.key == 'ei':
-            if not re.fullmatch(utils.urlsafe_b64_re, node.value):
-                return
-            padded_value = unfurl.add_b64_padding(node.value)
-            if not padded_value:
+            decoded_ei = utils.try_urlsafe_b64_decode(node.value, min_length=8)
+            if decoded_ei is None:
                 return
 
             try:
-                parsed_ei = parse_ei(padded_value)
+                parsed_ei = parse_ei(decoded_ei)
             except Exception as e:
-                log.exception(f'Exception running parse_ei() on {padded_value}: {e}')
+                log.exception(f'Exception running parse_ei() on {node.value}: {e}')
                 return
 
             if not parsed_ei:
@@ -448,7 +443,9 @@ def run(unfurl, node):
 
         elif node.key == 'uule':
             # https://moz.com/ugc/geolocation-the-ultimate-tip-to-emulate-local-search
-            location_string = base64.b64decode(unfurl.add_b64_padding(node.value[10:]))
+            location_string = utils.try_standard_b64_decode(node.value[10:])
+            if location_string is None:
+                return
             unfurl.add_to_queue(
                 data_type='google.uule', key=None, value=location_string, label=location_string,
                 parent_id=node.node_id, incoming_edge_config=google_edge)

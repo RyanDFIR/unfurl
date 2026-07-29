@@ -13,9 +13,8 @@
 # limitations under the License.
 
 from dnslib import DNSRecord
-import base64
-import binascii
 import re
+from unfurl import utils
 
 dns_edge = {
     'color': {
@@ -48,12 +47,15 @@ DNS_MESSAGE_FIELDS = {
 
 def run(unfurl, node):
     if node.data_type == 'url.query.pair' and node.key == 'dns':
+        decoded_query = utils.try_urlsafe_b64_decode(node.value)
+        if decoded_query is None:
+            return
+
         try:
-            decoded_query = base64.urlsafe_b64decode(unfurl.add_b64_padding(node.value))
             dns_record = DNSRecord.parse(decoded_query)
 
         # Might not have been encoded DNS after all
-        except (TypeError, binascii.Error):
+        except Exception:
             return
 
         parsed_dns = repr(dns_record)

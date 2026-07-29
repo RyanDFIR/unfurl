@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 from unfurl import utils
 
 import logging
@@ -55,13 +54,11 @@ def parse_twitter_snowflake(unfurl, node, encoding_type='integer', on_twitter=Tr
     # So far, I've only observed this in file attachments (images) to tweets. This format
     # also has three extra bytes at the "end" (LSBs); I don't know their function.
     elif encoding_type == 'base64':
-        m = utils.urlsafe_b64_re.fullmatch(node.value)
-        if not m:
+        snowflake_bytes = utils.try_urlsafe_b64_decode(node.value, min_length=8)
+        if snowflake_bytes is None:
             return
 
         try:
-            padded_value = unfurl.add_b64_padding(node.value)
-            snowflake_bytes = base64.urlsafe_b64decode(padded_value)
             snowflake_int = int.from_bytes(snowflake_bytes, 'big')
             timestamp = (snowflake_int >> 46) + 1288834974657
             machine_id = (snowflake_int & 0x3FF000000000) >> 36
