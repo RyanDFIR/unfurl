@@ -17,6 +17,7 @@ __all__ = [
     "parse_initial_node",
     "parse_instagram",
     "parse_ip",
+    "parse_itsdangerous",
     "parse_json",
     "parse_jwt",
     "parse_kg",

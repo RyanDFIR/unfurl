@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
-import binascii
 from unfurl import utils
 
 b64_edge = {
@@ -33,16 +31,11 @@ def run(unfurl, node):
     # If a node is explicitly labeled as base64, decode it directly and skip the
     # auto-detection heuristics (length/regex filters and the printable-only gate).
     if node.data_type == 'base64':
-        stripped = node.value.rstrip('=')
-        if len(stripped) % 4 == 1:
-            return
-        padded = stripped + ('=' * (-len(stripped) % 4))
-        try:
-            if '-' in node.value or '_' in node.value:
-                decoded = base64.urlsafe_b64decode(padded)
-            else:
-                decoded = base64.b64decode(padded, validate=True)
-        except (binascii.Error, ValueError):
+        if '-' in node.value or '_' in node.value:
+            decoded = utils.try_urlsafe_b64_decode(node.value)
+        else:
+            decoded = utils.try_standard_b64_decode(node.value)
+        if decoded is None:
             return
         if utils.is_printable_ascii(decoded):
             unfurl.add_to_queue(data_type='string', key=None, value=decoded.decode('ascii'),
@@ -52,32 +45,19 @@ def run(unfurl, node):
                                 parent_id=node.node_id, incoming_edge_config=b64_edge)
         return
 
-    if len(node.value) % 4 == 1:
-        # A valid b64 string will not be this length
-        return False
-
     if node.data_type == 'url.query.pair' and node.key == 'dns':
         return False
 
-    urlsafe_b64_m = utils.urlsafe_b64_re.fullmatch(node.value)
-    standard_b64_m = utils.standard_b64_re.fullmatch(node.value)
-    long_int_m = utils.long_int_re.fullmatch(node.value)
-    all_letters_m = utils.letters_re.fullmatch(node.value)
-
     # Long integers and normal words pass the b64 regex, but we don't want those here.
     # It's technically valid base64, but to reduce false positives, we're filtering them out.
-    if long_int_m or all_letters_m:
+    if utils.long_int_re.fullmatch(node.value) or utils.letters_re.fullmatch(node.value):
         return
 
-    decoded = None
-    padded_value = unfurl.add_b64_padding(node.value)
-    if not padded_value:
-        return
-
-    if urlsafe_b64_m:
-        decoded = base64.urlsafe_b64decode(padded_value)
-    elif standard_b64_m:
-        decoded = base64.b64decode(padded_value)
+    # Require a minimum encoded length of 8 as another false-positive gate; short
+    # values are too likely to be something else that happens to decode.
+    decoded = utils.try_urlsafe_b64_decode(node.value, min_length=8)
+    if decoded is None:
+        decoded = utils.try_standard_b64_decode(node.value, min_length=8)
 
     # Require printable output. This limits the plugin to ASCII strings that were
     # base64-encoded; a wrong guess almost always decodes to control-character

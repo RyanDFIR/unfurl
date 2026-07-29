@@ -20,7 +20,7 @@ import ipaddress
 import re
 import textwrap
 import zlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Union
 
 long_int_re = re.compile(r'\d{8,}')
@@ -84,6 +84,56 @@ def try_base32_decode(value):
         return None
 
 
+urlsafe_b64_charset_re = re.compile(r'[A-Za-z0-9_\-]+')
+standard_b64_charset_re = re.compile(r'[A-Za-z0-9+/]+')
+
+
+def _try_b64_decode(value, charset_re, decoder, min_length):
+    if not isinstance(value, str):
+        return None
+
+    unpadded = value.rstrip('=')
+
+    # min_length of 1 (the floor) still rejects empty/all-padding values.
+    if len(unpadded) < max(min_length, 1):
+        return None
+
+    if not charset_re.fullmatch(unpadded):
+        return None
+
+    # Base64 encodes 3 bytes into 4 characters, so a valid (unpadded) length
+    # mod 4 is never 1.
+    if len(unpadded) % 4 == 1:
+        return None
+
+    padded = unpadded + ('=' * (-len(unpadded) % 4))
+    try:
+        return decoder(padded)
+    except (binascii.Error, ValueError):
+        return None
+
+
+def try_urlsafe_b64_decode(value, min_length=1):
+    """Return base64url-decoded bytes for value, or None if it isn't decodable.
+
+    Pure decode mechanics (alphabet, length, and padding handling) shared by any
+    parser that needs to attempt a base64 decode, mirroring try_base32_decode.
+
+    min_length is the minimum length of the encoded string (excluding padding).
+    Callers auto-detecting base64 in arbitrary values should pass a higher gate
+    (the base64 parser uses 8) to limit false positives; callers whose
+    surrounding structure already identifies the value as base64 (e.g. a segment
+    of an itsdangerous token) can leave the default.
+    """
+    return _try_b64_decode(value, urlsafe_b64_charset_re, base64.urlsafe_b64decode, min_length)
+
+
+def try_standard_b64_decode(value, min_length=1):
+    """Return base64-decoded bytes for value (standard alphabet, using + and /),
+    or None if it isn't decodable. See try_urlsafe_b64_decode for min_length."""
+    return _try_b64_decode(value, standard_b64_charset_re, base64.b64decode, min_length)
+
+
 def parse_ip_address(potential_ip):
     if re.fullmatch(digits_re, potential_ip):
         potential_ip = int(potential_ip)
@@ -128,7 +178,8 @@ def create_epoch_seconds_timestamp(iso_timestamp: str | None = None, days_ahead:
     some number of days in the future. Optionally, an offset (in seconds) can be provided that will be subtracted
     from the return timestamp.
 
-    :param iso_timestamp: An ISO 8601-formatted timestamp string (ex: 2015-02-01T00:00:00)
+    :param iso_timestamp: An ISO 8601-formatted timestamp string (ex: 2015-02-01T00:00:00).
+        If it has no timezone, it is interpreted as UTC.
     :param days_ahead: Number of days ahead the timestamp should be created for (ex: 365)
     :param offset: The offset in seconds from the Unix epoch
     :return: An integer timestamp (in seconds)
@@ -139,7 +190,12 @@ def create_epoch_seconds_timestamp(iso_timestamp: str | None = None, days_ahead:
         timestamp = int(datetime.now().timestamp())
     # timestamp is a string; parse it to epoch seconds
     elif iso_timestamp:
-        timestamp = int(datetime.fromisoformat(iso_timestamp).timestamp())
+        parsed = datetime.fromisoformat(iso_timestamp)
+        if parsed.tzinfo is None:
+            # Interpret naive timestamps as UTC; .timestamp() would otherwise
+            # assume local time, shifting the result by the machine's UTC offset.
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        timestamp = int(parsed.timestamp())
     # Make the timestamp now + days_ahead
     elif not iso_timestamp and days_ahead:
         timestamp = int(datetime.now().timestamp()) + (days_ahead * 86400)

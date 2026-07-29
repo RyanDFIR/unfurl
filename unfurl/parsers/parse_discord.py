@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2026 Ryan Benson
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unfurl import utils
+
 import logging
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,18 @@ discord_edge = {
     'title': 'Discord Snowflake',
     'label': '❄'
 }
+
+def create_discord_id(timestamp=None, days_ahead=None, worker_id=0, process_id=0, increment=0):
+    id_timestamp = utils.create_epoch_seconds_timestamp(
+        iso_timestamp=timestamp, days_ahead=days_ahead, offset=1420070400)
+
+    # Multiply the timestamp by 1000, as Discord uses a millisecond timestamp
+    timestamp_bits = utils.set_bits(id_timestamp * 1000, 22)
+    worker_id_bits = utils.set_bits(worker_id, 17)
+    process_id_bits = utils.set_bits(process_id, 12)
+    increment_bits = utils.set_bits(increment, 0)
+
+    return int(timestamp_bits + worker_id_bits + process_id_bits + increment_bits)
 
 
 def parse_discord_snowflake(unfurl, node):
@@ -35,7 +49,7 @@ def parse_discord_snowflake(unfurl, node):
         # Ref: https://discordapp.com/developers/docs/reference#snowflakes
         timestamp = (snowflake >> 22) + 1420070400000
         worker_id = (snowflake & 0x3E0000) >> 17
-        internal_process_id = (snowflake & 0x1F000) >> 17
+        internal_process_id = (snowflake & 0x1F000) >> 12
         increment = snowflake & 0xFFF
 
     except Exception as e:
@@ -71,6 +85,11 @@ def run(unfurl, node):
     # Known patterns from main Discord site
     discord_domains = ['discordapp.com', 'discordapp.net', 'discord.com']
     if any(unfurl.preceding_domain_matches(node, d) for d in discord_domains):
+        # Make sure a potential Snowflake is reasonable: between 2015-02-01
+        # (shortly before Discord launched) & a year from now
+        min_reasonable_id = create_discord_id('2015-02-01T00:00:00')
+        max_reasonable_id = create_discord_id(days_ahead=365)
+
         if node.data_type == 'url.path.segment':
             # Viewing a channel on a server
             # Ex: https://discordapp.com/channels/427876741990711298/551531058039095296
@@ -122,6 +141,11 @@ def run(unfurl, node):
                         data_type='description', key=None, value=None, label='Attachment File Name',
                         parent_id=node.node_id, incoming_edge_config=discord_edge)
 
-            # Check if the node's value would correspond to a Snowflake with timestamp between 2015-02 and 2022-07
-            elif unfurl.check_if_int_between(node.value, 15000000000000000, 1000000000000000001):
+            # Check if the node's value would correspond to a Snowflake with a plausible timestamp
+            elif unfurl.check_if_int_between(node.value, min_reasonable_id, max_reasonable_id):
                 parse_discord_snowflake(unfurl, node)
+
+        # Snowflakes also show up outside URL paths (query values, JSON payloads in
+        # tokens, etc.); decode anything under a Discord domain that looks like one.
+        elif unfurl.check_if_int_between(node.value, min_reasonable_id, max_reasonable_id):
+            parse_discord_snowflake(unfurl, node)

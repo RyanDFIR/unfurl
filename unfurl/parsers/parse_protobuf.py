@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 import json
 import logging
 import os
@@ -267,8 +266,6 @@ def run(unfurl, node):
     if node.data_type.startswith(('uuid', 'hash')):
         return False
 
-    urlsafe_b64_m = utils.urlsafe_b64_re.fullmatch(node.value)
-    standard_b64_m = utils.standard_b64_re.fullmatch(node.value)
     hex_m = utils.hex_re.fullmatch(node.value)
     # Updating to all letters/digits and forward slashes, to catch URL paths that may,
     # by some chance, validly decode as protobuf, but really aren't.
@@ -285,26 +282,17 @@ def run(unfurl, node):
     attempts = []
 
     if not (all_digits_m or all_letters_m):
-        # A valid b64 string is never length % 4 == 1 (hex is always even-length,
-        # so this guard only affects the base64 candidates).
-        b64_ok = len(node.value) % 4 != 1
         if hex_m:
             try:
                 attempts.append((bytes.fromhex(node.value), hex_proto_edge))
             except ValueError:
                 pass
-        elif urlsafe_b64_m and b64_ok:
-            try:
-                attempts.append(
-                    (base64.urlsafe_b64decode(unfurl.add_b64_padding(node.value)), b64_proto_edge))
-            except Exception:
-                pass
-        elif standard_b64_m and b64_ok:
-            try:
-                attempts.append(
-                    (base64.b64decode(unfurl.add_b64_padding(node.value)), b64_proto_edge))
-            except Exception:
-                pass
+        else:
+            b64_decoded = utils.try_urlsafe_b64_decode(node.value, min_length=8)
+            if b64_decoded is None:
+                b64_decoded = utils.try_standard_b64_decode(node.value, min_length=8)
+            if b64_decoded is not None:
+                attempts.append((b64_decoded, b64_proto_edge))
 
         b32_decoded = utils.try_base32_decode(node.value)
         if b32_decoded is not None:

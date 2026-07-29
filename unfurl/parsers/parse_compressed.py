@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 import re
 import zlib
 from unfurl import utils
@@ -88,19 +87,14 @@ def run(unfurl, node):
     # not useful clutter, so the decode happens here and we only emit on success.
     attempts = []
 
-    # base64 candidate. A valid b64 string is never length % 4 == 1, and long
-    # integers pass the b64 regex but aren't what we want here.
-    if len(node.value) % 4 != 1 and not utils.long_int_re.fullmatch(node.value):
-        padded_value = unfurl.add_b64_padding(node.value)
-        if padded_value:
-            decoded = None
-            if utils.urlsafe_b64_re.fullmatch(node.value):
-                decoded = base64.urlsafe_b64decode(padded_value)
-            elif utils.standard_b64_re.fullmatch(node.value):
-                decoded = base64.b64decode(padded_value)
-            if decoded:
-                attempts.append((decoded, b64_zip_edge,
-                                 'This data was base64-decoded, then zlib inflated'))
+    # base64 candidate. Long integers pass the b64 regex but aren't what we want here.
+    if not utils.long_int_re.fullmatch(node.value):
+        decoded = utils.try_urlsafe_b64_decode(node.value, min_length=8)
+        if decoded is None:
+            decoded = utils.try_standard_b64_decode(node.value, min_length=8)
+        if decoded:
+            attempts.append((decoded, b64_zip_edge,
+                             'This data was base64-decoded, then zlib inflated'))
 
     # base32 candidate.
     b32_decoded = utils.try_base32_decode(node.value)
