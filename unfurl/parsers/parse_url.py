@@ -132,14 +132,29 @@ def run(unfurl, node):
                     parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
     elif node.data_type == 'url.path':
-        path_segments = node.value.rstrip('/').split('/')
-        if len(path_segments) > 2:
-            for segment_number, path_segment in enumerate(path_segments):
-                if path_segment != '':
-                    unfurl.add_to_queue(
-                        data_type='url.path.segment', key=segment_number, value=path_segment,
-                        hover='This is a URL <b>path segment</b> (the URL path is split on "/"s). '
-                              'Numbering starts at 1.', parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+        # Adjacent slashes mean the path contains an empty segment. That is legal per
+        # RFC 3986 (a path with an authority is *( "/" segment ), and a segment may be
+        # empty), and standard normalization does not collapse them -- so "/a/b" and
+        # "//a/b" are different, non-equivalent paths. Unfurl leaves empty segments out
+        # of the numbering entirely, so parsers keying on segment position still match
+        # either form.
+        if '//' in node.value:
+            unfurl.add_to_queue(
+                data_type='descriptor', key=None, value='Path contains an empty segment ("//")',
+                hover='This URL path contains <b>adjacent slashes</b>, meaning it has an '
+                      '<b>empty path segment</b>. <br>This is legal, but servers disagree on how to '
+                      'resolve it: some <br>collapse repeated slashes by default, while '
+                      'browsers and many application <br>frameworks preserve them. <br><br>The path above is shown unmodified. The '
+                      'empty segments are left out of the <br>numbered child segments, so a path with '
+                      'them is numbered the same as one <br>without.',
+                parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+
+        path_segments = [segment for segment in node.value.split('/') if segment != '']
+        for segment_number, path_segment in enumerate(path_segments, start=1):
+            unfurl.add_to_queue(
+                data_type='url.path.segment', key=segment_number, value=path_segment,
+                hover='This is a URL <b>path segment</b> (the URL path is split on "/"s). '
+                      'Numbering starts at 1.', parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
     elif node.data_type == 'url.query' or node.data_type == 'url.fragment':
         fragment_value = node.value

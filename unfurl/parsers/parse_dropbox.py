@@ -25,24 +25,26 @@ dropbox_edge = {
 def run(unfurl, node):
     # References: https://www.atropos4n6.com/cloud-forensics/artifacts-of-dropbox-usage-on-windows-10-part-2/
     if unfurl.preceding_domain_matches(node, 'dropbox.com'):
-        if node.data_type == 'url.path' and node.value.startswith('/home'):
-            _, viewed_directory = node.value.split('/home', 1)
-            viewed_value = ''
-            if viewed_directory and viewed_directory != '/':
-                viewed_value = f'directory "{viewed_directory[1:]}" from '
-            unfurl.add_to_queue(
-                data_type='descriptor', key=None, value=f'Viewing {viewed_value}the user\'s "All Files" page',
-                parent_id=node.node_id, incoming_edge_config=dropbox_edge)
+        if node.data_type == 'url.path':
+            path_segments = [segment for segment in node.value.split('/') if segment != '']
+            if not path_segments:
+                return
 
-        elif node.data_type == 'url.path' and node.value.startswith('/h'):
-            _, viewed_directory = node.value.split('/h', 1)
-            viewed_value = ''
-            if viewed_directory and viewed_directory != '/':
-                viewed_value = f'directory "{viewed_directory[1:]}" from '
-            unfurl.add_to_queue(
-                data_type='descriptor', key=None, value=f'Viewing {viewed_value}the user\'s Dropbox "Home" page',
-                hover='The Dropbox "Home" page has suggestions, recent, and starred items.',
-                parent_id=node.node_id, incoming_edge_config=dropbox_edge)
+            viewed_directory = '/'.join(path_segments[1:])
+            viewed_value = f'directory "{viewed_directory}" from ' if viewed_directory else ''
+
+            if path_segments[0] == 'home':
+                unfurl.add_to_queue(
+                    data_type='descriptor', key=None, value=f'Viewing {viewed_value}the user\'s "All Files" page',
+                    parent_id=node.node_id, incoming_edge_config=dropbox_edge)
+
+            # "/h" is no longer a live page on dropbox.com, but it is still parsed.
+            elif path_segments[0] == 'h':
+                unfurl.add_to_queue(
+                    data_type='descriptor', key=None,
+                    value=f'Viewing {viewed_value}the user\'s Dropbox "Home" page',
+                    hover='The Dropbox "Home" page had suggestions, recent, and starred items.',
+                    parent_id=node.node_id, incoming_edge_config=dropbox_edge)
 
         elif node.data_type == 'url.query.pair':
             if node.key == 'preview':

@@ -92,12 +92,12 @@ def run(unfurl, node):
                     data_type='descriptor', key='Video Resolution Filter', value=node.value,
                     parent_id=node.node_id, incoming_edge_config=brave_edge)
 
-        elif node.data_type == 'url.path':
+        elif node.data_type == 'url.path.segment' and node.key == 1:
             search_type_mappings = {
-                '/images': 'Image Search',
-                '/news': 'News Search',
-                '/search': 'Web Search',
-                '/videos': 'Video Search',
+                'images': 'Image Search',
+                'news': 'News Search',
+                'search': 'Web Search',
+                'videos': 'Video Search',
             }
             search_type = search_type_mappings.get(node.value)
             if search_type:
