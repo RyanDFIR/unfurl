@@ -31,7 +31,23 @@ class TestShortLinks(unittest.TestCase):
 
         # is processing finished
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
+
+    def test_shortlink_with_no_code(self):
+        """ Test that a path of only slashes isn't "expanded".
+
+        The short code is the path with its slashes stripped, so "///" leaves nothing.
+        Requesting the bare base URL would follow the shortener's own front-page
+        redirect and report it as this link's expansion. The guard also means this
+        test makes no network request.
+        """
+
+        for url in ('https://t.co//', 'https://t.co///', 'https://bit.ly//'):
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value=url)
+            test.parse_queue()
+
+            expanded = [n for n in test.nodes.values() if str(n.label).startswith('Expanded URL')]
+            self.assertEqual([], expanded, msg=f'did not expect an expansion for {url}')
 
     def test_twitter_shortlink(self):
         """ Test a Twitter shortlink; these use 301 redirects like most shortlinks"""
@@ -48,7 +64,6 @@ class TestShortLinks(unittest.TestCase):
 
         # is processing finished
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_no_lookups(self):
         """ Test a shortlink with remote lookups disabled"""

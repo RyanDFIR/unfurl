@@ -53,12 +53,8 @@ def run(unfurl, node):
                     data_type='descriptor', key=None, value=node.value, label=param_text,
                     parent_id=node.node_id, incoming_edge_config=youtube_edge)
 
-        if node.key == 'v' or (node.data_type == 'url.path.segment' and len(node.value) == 11) or \
-                (node.data_type == 'url.path' and len(node.value[1:].split('/')) == 1 and len(node.value) == 12):
-            video_id = node.value
-            if node.data_type == 'url.path':
-                video_id = video_id[1:]
-            param_text = f'Video ID: {video_id}'
+        if node.key == 'v' or (node.data_type == 'url.path.segment' and len(node.value) == 11):
+            param_text = f'Video ID: {node.value}'
             unfurl.add_to_queue(
                 data_type='descriptor', key=None, value=node.value, label=param_text,
                 parent_id=node.node_id, incoming_edge_config=youtube_edge)

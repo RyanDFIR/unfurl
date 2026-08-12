@@ -68,13 +68,15 @@ def run(unfurl, node):
                 section_content_dict = {}
                 content_pairs = line_re.group('section_content').split()
 
+                # Values are parsed out of dnslib's repr() output, so string fields
+                # (qname, rcode, etc.) arrive wrapped in literal quotes; strip them.
                 if line_re.group('section_type') == 'DNS Question':
                     question = content_pairs.pop(0)
-                    section_content_dict['qname'] = question
+                    section_content_dict['qname'] = question.strip('\'"')
 
                 for content_pair in content_pairs:
                     key, value = content_pair.split('=')
-                    section_content_dict[key] = value
+                    section_content_dict[key] = value.strip('\'"')
 
                 unfurl.add_to_queue(
                     data_type='dns.section', key=line_re.group('section_type'), value=section_content_dict,

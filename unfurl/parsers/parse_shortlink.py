@@ -102,8 +102,12 @@ def run(unfurl, node):
     if node.data_type != 'url.path':
         return
 
+    short_code = node.value.strip('/')
+    if not short_code:
+        return
+
     if 'lnkd.in' == preceding_domain:
-        expanded_url = parse_linkedin_slink_url(node.value[1:])
+        expanded_url = parse_linkedin_slink_url(short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -113,7 +117,7 @@ def run(unfurl, node):
         return
 
     if 'v.gd' == preceding_domain:
-        expanded_url = expand_vdg_url(node.value[1:])
+        expanded_url = expand_vdg_url(short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -123,7 +127,7 @@ def run(unfurl, node):
 
     bitly_domains = ['bit.ly', 'bitly.com', 'j.mp']
     if any(unfurl.preceding_domain_matches(node, d) for d in bitly_domains):
-        expanded_info = expand_bitly_url(node.value[1:], unfurl.api_keys.get('bitly', os.environ.get('bitly')))
+        expanded_info = expand_bitly_url(short_code, unfurl.api_keys.get('bitly', os.environ.get('bitly')))
 
         if not expanded_info:
             return
@@ -183,7 +187,7 @@ def run(unfurl, node):
 
     for redirect_expand in redirect_expands:
         if redirect_expand['domain'] == preceding_domain:
-            expanded_url = expand_url_via_redirect_header(redirect_expand['base_url'], node.value[1:])
+            expanded_url = expand_url_via_redirect_header(redirect_expand['base_url'], short_code)
             if expanded_url:
                 unfurl.add_to_queue(
                     data_type='url', key=None, value=expanded_url,
@@ -195,7 +199,7 @@ def run(unfurl, node):
     # Guess that any domain + tld that is less than eight characters is a link shortener, and try to
     # expand it via a 301/302 Location header.
     if preceding_domain and len(preceding_domain) < 8:
-        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', node.value[1:])
+        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -209,7 +213,7 @@ def run(unfurl, node):
     # this won't work.
     misp_shortener_domains = unfurl.known_domain_lists['List of known URL Shorteners domains'].list
     if preceding_domain in misp_shortener_domains:
-        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', node.value[1:])
+        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
