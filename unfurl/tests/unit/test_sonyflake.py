@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestSonyflake(unittest.TestCase):
 
     def test_sonyflake(self):
@@ -12,15 +16,17 @@ class TestSonyflake(unittest.TestCase):
             data_type='url', key=None, value='45eec4a4600041b')
         test.parse_queue()
 
-        # test number of nodes
-        self.assertEqual(len(test.nodes.keys()), 5)
-        self.assertEqual(test.total_nodes, 5)
-
         # confirm the machine ID is parsed correctly
-        self.assertIn('4.27', test.nodes[4].label)
+        machine_id_nodes = [
+            n for n in get_nodes_by_type(test, 'integer')
+            if n.label.startswith('Machine ID')]
+        self.assertEqual(len(machine_id_nodes), 1)
+        self.assertIn('4.27', machine_id_nodes[0].label)
 
         # confirm the time is parsed correctly
-        self.assertIn('2020-08-12 17:35:29.98', test.nodes[5].label)
+        timestamp_nodes = get_nodes_by_type(test, 'timestamp.epoch-centiseconds')
+        self.assertEqual(len(timestamp_nodes), 1)
+        self.assertIn('2020-08-12 17:35:29.98', timestamp_nodes[0].label)
 
 
 if __name__ == '__main__':

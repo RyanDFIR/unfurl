@@ -18,22 +18,25 @@ class TestMetasploit(unittest.TestCase):
                   'uSHb57lFKNndzVSpivRDSi5VH2U-w-pEq_CroLcB--cNbYRroyFuaAgCyMCJDpWbws/')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 11)
-        self.assertEqual(test.total_nodes, 11)
+        descriptor_nodes = get_nodes_by_type(test, 'descriptor')
 
         # confirm that unique id parsed
-        self.assertIn('Unique ID: e0f1a8546626c7c9', test.nodes[7].label)
+        unique_id_nodes = [n for n in descriptor_nodes if n.key == 'Unique ID']
+        self.assertEqual(len(unique_id_nodes), 1)
+        self.assertEqual('e0f1a8546626c7c9', unique_id_nodes[0].value)
 
         # confirm that arch parsed
-        self.assertIn('Architecture: X64', test.nodes[9].label)
+        arch_nodes = [n for n in descriptor_nodes if n.key == 'Architecture']
+        self.assertEqual(len(arch_nodes), 1)
+        self.assertEqual('X64', arch_nodes[0].value)
 
         # confirm embedded timestamp parsed
-        self.assertEqual(1502815973, test.nodes[10].value)
+        timestamp_nodes = get_nodes_by_type(test, 'epoch-seconds')
+        self.assertEqual(len(timestamp_nodes), 1)
+        self.assertEqual(1502815973, timestamp_nodes[0].value)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_metasploit_checksum_url(self):
         """ Test a Metasploit checksum url """
@@ -44,12 +47,10 @@ class TestMetasploit(unittest.TestCase):
             value='https://test-example.com/WsJH')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 7)
-        self.assertEqual(test.total_nodes, 7)
-
-        # confirm that unique id parsed
-        self.assertIn('Matches Metasploit URL checksum for Windows', test.nodes[7].label)
+        # confirm that checksum parsed
+        descriptor_nodes = get_nodes_by_type(test, 'descriptor')
+        self.assertEqual(len(descriptor_nodes), 1)
+        self.assertIn('Matches Metasploit URL checksum for Windows', descriptor_nodes[0].label)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())

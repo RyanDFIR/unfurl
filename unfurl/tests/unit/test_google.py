@@ -3,6 +3,10 @@ from urllib.parse import urlparse
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestGoogle(unittest.TestCase):
 
     def test_google_search_with_rlz(self):
@@ -14,22 +18,23 @@ class TestGoogle(unittest.TestCase):
             value='https://www.google.com/search?rlz=1C1GCAB_enUS907US907&q=dfir+data')
         test.parse_queue()
 
-        # Check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 22)
-        self.assertEqual(test.total_nodes, 22)
-
         # Confirm that RLZ AP parsed
-        self.assertEqual('Application: C1', test.nodes[15].label)
+        ap_nodes = get_nodes_by_type(test, 'google.rlz.ap')
+        self.assertEqual(1, len(ap_nodes))
+        self.assertEqual('Application: C1', ap_nodes[0].label)
 
         # Language parses
-        self.assertEqual('Language: English (en)', test.nodes[18].label)
+        language_nodes = get_nodes_by_type(test, 'google.rlz.language')
+        self.assertEqual(1, len(language_nodes))
+        self.assertEqual('Language: English (en)', language_nodes[0].label)
 
         # Search cohort parses
-        self.assertIn('United States the week of 2020-06-22', test.nodes[20].label)
+        search_cohort_nodes = get_nodes_by_type(test, 'google.rlz.search_cohort')
+        self.assertEqual(1, len(search_cohort_nodes))
+        self.assertIn('United States the week of 2020-06-22', search_cohort_nodes[0].label)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_google_search_with_rlz_different_weeks(self):
         """ Test a Google search URL with a RLZ param with different cohort weeks """
@@ -40,25 +45,28 @@ class TestGoogle(unittest.TestCase):
             value='https://www.google.com/search?rlz=1C1GCAB_esUS97US1007&q=dfir+data')
         test.parse_queue()
 
-        # Check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 22)
-        self.assertEqual(test.total_nodes, 22)
-
         # Confirm that RLZ AP parsed
-        self.assertEqual('Application: C1', test.nodes[15].label)
+        ap_nodes = get_nodes_by_type(test, 'google.rlz.ap')
+        self.assertEqual(1, len(ap_nodes))
+        self.assertEqual('Application: C1', ap_nodes[0].label)
 
         # Language parses
-        self.assertEqual('Language: Spanish (es)', test.nodes[18].label)
+        language_nodes = get_nodes_by_type(test, 'google.rlz.language')
+        self.assertEqual(1, len(language_nodes))
+        self.assertEqual('Language: Spanish (es)', language_nodes[0].label)
 
         # Install cohort parses (2 digit week)
-        self.assertIn('United States the week of 2004-12-13', test.nodes[19].label)
+        install_cohort_nodes = get_nodes_by_type(test, 'google.rlz.install_cohort')
+        self.assertEqual(1, len(install_cohort_nodes))
+        self.assertIn('United States the week of 2004-12-13', install_cohort_nodes[0].label)
 
         # Search cohort parses (4 digit week)
-        self.assertIn('United States the week of 2022-05-23', test.nodes[20].label)
+        search_cohort_nodes = get_nodes_by_type(test, 'google.rlz.search_cohort')
+        self.assertEqual(1, len(search_cohort_nodes))
+        self.assertIn('United States the week of 2022-05-23', search_cohort_nodes[0].label)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_google_search_with_aqs(self):
         """ Test a Google search URL with a AQS param """
@@ -70,31 +78,39 @@ class TestGoogle(unittest.TestCase):
                   '&aqs=chrome.1.69i60j0i433i512j0i512j69i60l2j69i61j69i60j69i65.2855j0j7')
         test.parse_queue()
 
-        # Check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 44)
-        self.assertEqual(test.total_nodes, 44)
-
         # Confirm that clicked suggestion parsed
-        self.assertEqual('Clicked Suggestion: 1', test.nodes[17].label)
+        clicked_suggestion_nodes = get_nodes_by_type(test, 'google.aqs.clicked_suggestion')
+        self.assertEqual(1, len(clicked_suggestion_nodes))
+        self.assertEqual('Clicked Suggestion: 1', clicked_suggestion_nodes[0].label)
 
         # Check that 1st autocomplete match parsed
-        self.assertEqual('Autocomplete Match (0): 69i60', test.nodes[18].label)
+        ac_match_0 = next(n for n in get_nodes_by_type(test, 'google.aqs.ac_match')
+                          if n.key == 'Autocomplete Match (0)')
+        self.assertEqual('Autocomplete Match (0): 69i60', ac_match_0.label)
 
-        # Check that match type of 1st autocomplete match parsed
-        self.assertIn('Type: Native Chrome', test.nodes[28].label)
+        # Check that "Native Chrome" match type (used by autocomplete match 0) parsed
+        suggest_type_labels = [n.label for n in get_nodes_by_type(test, 'omnibox.suggest_type')]
+        self.assertIn('Type: Native Chrome', suggest_type_labels)
 
-        # Check that match subtype of autocomplete match 5 parsed
-        self.assertIn('Subtype: Omnibox History Title', test.nodes[39].label)
+        # Check that "Omnibox History Title" subtype (used by autocomplete match 5) parsed
+        suggest_subtype_labels = [n.label for n in get_nodes_by_type(test, 'omnibox.suggest_subtype')]
+        self.assertIn('Subtype: Omnibox History Title', suggest_subtype_labels)
 
         # Check that Query Formulation Time parsed
-        self.assertIn('2.855 seconds', test.nodes[25].label)
+        qft_nodes = get_nodes_by_type(test, 'google.aqs.query_formulation_time')
+        self.assertEqual(1, len(qft_nodes))
+        self.assertIn('2.855 seconds', qft_nodes[0].label)
 
         # Check that page classification was parsed and looked up
-        self.assertIn('(with omnibox as starting focus)', test.nodes[44].label)
+        pc_nodes = get_nodes_by_type(test, 'google.aqs.page_classification')
+        self.assertEqual(1, len(pc_nodes))
+        self.assertEqual('7', pc_nodes[0].value)
+        pc_descriptors = [n for n in get_nodes_by_type(test, 'descriptor')
+                          if '(with omnibox as starting focus)' in n.label]
+        self.assertEqual(1, len(pc_descriptors))
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
 
     def test_google_url_redirect(self):

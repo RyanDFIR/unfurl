@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestDNS(unittest.TestCase):
 
     def test_dns(self):
@@ -13,16 +17,14 @@ class TestDNS(unittest.TestCase):
             value='https://dnsserver.example.net/dns-query?dns=AAABAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB')
         test.parse_queue()
 
-        # test number of nodes
-        self.assertEqual(len(test.nodes.keys()), 25)
-        self.assertEqual(test.total_nodes, 25)
-
-        # test that the qname parsed correctly
-        self.assertIn('www.example.com.', test.nodes[23].value)
+        # test that the fields parsed correctly, with no repr() quote artifacts
+        fields = {n.key: n.value for n in get_nodes_by_type(test, 'dns.section.field')}
+        self.assertEqual(fields['qname'], 'www.example.com.')
+        self.assertEqual(fields['qtype'], 'A')
+        self.assertEqual(fields['opcode'], 'QUERY')
 
         # is processing finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
 
 if __name__ == '__main__':

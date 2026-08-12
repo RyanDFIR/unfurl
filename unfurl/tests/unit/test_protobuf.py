@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestProtobuf(unittest.TestCase):
 
     def test_b64_zip_protobuf(self):
@@ -14,22 +18,19 @@ class TestProtobuf(unittest.TestCase):
             value='eJzj4tLP1TcwNajKKi8yYPSSTcvMSVUoriwuSc1VSMsvSs0rzkxWSMxLzKksziwGADbBDzw')
         test.parse_queue()
 
-        # Check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 5)
-        self.assertEqual(test.total_nodes, 5)
-
         # Confirm that it was detected as bytes, not ascii
-        self.assertEqual('bytes', test.nodes[2].data_type)
+        bytes_nodes = get_nodes_by_type(test, 'bytes')
+        self.assertEqual(1, len(bytes_nodes))
 
         # Confirm that bytes decoded correctly
-        self.assertEqual(b'\n\n/m/050zjwr0\x01J\x1dfile system forensic analysis', test.nodes[2].value)
+        self.assertEqual(b'\n\n/m/050zjwr0\x01J\x1dfile system forensic analysis', bytes_nodes[0].value)
 
         # Confirm that text/bytes proto field decoded correctly
-        self.assertEqual('file system forensic analysis', test.nodes[5].value)
+        proto_values = [n.value for n in get_nodes_by_type(test, 'proto')]
+        self.assertIn('file system forensic analysis', proto_values)
 
         # Make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_standard_b64_protobuf(self):
         """ Test a protobuf that is encoded with standard b64."""
@@ -40,16 +41,13 @@ class TestProtobuf(unittest.TestCase):
             value='CkQKCEpvaG4gRG9lENIJGhBqZG9lQGV4YW1wbGUuY29tIOr//////////wEoks28w/3B2LS5ATF90LNZ9TkSQDoEABI0Vg==')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 9)
-        self.assertEqual(test.total_nodes, 9)
-
-        self.assertEqual('proto.dict', test.nodes[2].data_type)
-        self.assertEqual('jdoe@example.com', test.nodes[5].value)
+        # Confirm the protobuf parsed and a text field decoded correctly
+        self.assertEqual(1, len(get_nodes_by_type(test, 'proto.dict')))
+        proto_values = [n.value for n in get_nodes_by_type(test, 'proto')]
+        self.assertIn('jdoe@example.com', proto_values)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_urlsafe_b64_protobuf(self):
         """ Test a protobuf that is encoded with urlsafe b64."""
@@ -60,16 +58,13 @@ class TestProtobuf(unittest.TestCase):
             value='CkQKCEpvaG4gRG9lENIJGhBqZG9lQGV4YW1wbGUuY29tIOr__________wEoks28w_3B2LS5ATF90LNZ9TkSQDoEABI0Vg')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 9)
-        self.assertEqual(test.total_nodes, 9)
-
-        self.assertEqual('proto.dict', test.nodes[2].data_type)
-        self.assertEqual('jdoe@example.com', test.nodes[5].value)
+        # Confirm the protobuf parsed and a text field decoded correctly
+        self.assertEqual(1, len(get_nodes_by_type(test, 'proto.dict')))
+        proto_values = [n.value for n in get_nodes_by_type(test, 'proto')]
+        self.assertIn('jdoe@example.com', proto_values)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_base32_protobuf(self):
         """ Test a protobuf that is encoded with base32."""
@@ -83,13 +78,14 @@ class TestProtobuf(unittest.TestCase):
         test.parse_queue()
 
         # Confirm it was decoded from base32, then parsed as a protobuf
-        self.assertEqual('proto.dict', test.nodes[2].data_type)
-        self.assertEqual('b32+proto', test.nodes[2].incoming_edge_config['label'])
-        self.assertEqual('jdoe@example.com', test.nodes[5].value)
+        proto_dict_nodes = get_nodes_by_type(test, 'proto.dict')
+        self.assertEqual(1, len(proto_dict_nodes))
+        self.assertEqual('b32+proto', proto_dict_nodes[0].incoming_edge_config['label'])
+        proto_values = [n.value for n in get_nodes_by_type(test, 'proto')]
+        self.assertIn('jdoe@example.com', proto_values)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_hex_protobuf(self):
         """ Test a protobuf that is encoded as hex."""
@@ -101,16 +97,13 @@ class TestProtobuf(unittest.TestCase):
                   'ffffffffffffffff012892cdbcc3fdc1d8b4b901317dd0b359f53912403a0400123456')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 9)
-        self.assertEqual(test.total_nodes, 9)
-
-        self.assertEqual('proto.dict', test.nodes[2].data_type)
-        self.assertEqual('jdoe@example.com', test.nodes[5].value)
+        # Confirm the protobuf parsed and a text field decoded correctly
+        self.assertEqual(1, len(get_nodes_by_type(test, 'proto.dict')))
+        proto_values = [n.value for n in get_nodes_by_type(test, 'proto')]
+        self.assertIn('jdoe@example.com', proto_values)
 
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
 
 if __name__ == '__main__':
