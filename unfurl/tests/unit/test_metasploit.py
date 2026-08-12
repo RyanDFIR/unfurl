@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestMetasploit(unittest.TestCase):
 
     def test_metasploit_payload_uuid(self):
