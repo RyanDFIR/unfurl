@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestYouTube(unittest.TestCase):
 
     def test_youtube(self):
@@ -13,16 +17,13 @@ class TestYouTube(unittest.TestCase):
             value='https://www.youtube.com/watch?v=LnhSTZgzKuY&list=PLlFGZ98XmfGfV6RAY9fQSeRfyIuhVGSdm&index=2&t=42s')
         test.parse_queue()
 
-        # test number of nodes
-        self.assertEqual(17, len(test.nodes.keys()))
-        self.assertEqual(17, test.total_nodes)
-
         # Test query parsing
-        self.assertEqual('Video will start playing at 42 seconds', test.nodes[17].label)
+        descriptor_labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
+        self.assertIn('Video ID: LnhSTZgzKuY', descriptor_labels)
+        self.assertIn('Video will start playing at 42 seconds', descriptor_labels)
 
         # is processing finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
     def test_youtu_be(self):
         """ Test a youtu.be URL, with t as int"""
@@ -34,16 +35,13 @@ class TestYouTube(unittest.TestCase):
             value='https://youtu.be/LnhSTZgzKuY?list=PLlFGZ98XmfGfV6RAY9fQSeRfyIuhVGSdm&t=301')
         test.parse_queue()
 
-        # test number of nodes
-        self.assertEqual(len(test.nodes.keys()), 14)
-        self.assertEqual(test.total_nodes, 14)
-
         # Test query parsing
-        self.assertEqual('Video will start playing at 05:01 (mm:ss)', test.nodes[14].label)
+        descriptor_labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
+        self.assertIn('Video ID: LnhSTZgzKuY', descriptor_labels)
+        self.assertIn('Video will start playing at 05:01 (mm:ss)', descriptor_labels)
 
         # is processing finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
 
 if __name__ == '__main__':

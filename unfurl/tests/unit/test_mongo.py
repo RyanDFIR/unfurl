@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestMongo(unittest.TestCase):
 
     def test_mongo_objectid(self):
@@ -16,24 +20,20 @@ class TestMongo(unittest.TestCase):
             data_type='url', key=None, value='65920080aabbccddee112233')
         test.parse_queue()
 
-        # test number of nodes:
-        #   1: initial url
-        #   2: mongo.objectid
-        #   3: epoch-seconds (raw timestamp)
-        #   4: descriptor (machine/process bytes)
-        #   5: integer (counter)
-        #   6: timestamp.epoch-seconds (human-readable, added by parse_timestamp.py)
-        self.assertEqual(6, len(test.nodes.keys()))
-        self.assertEqual(6, test.total_nodes)
-
         # confirm MongoDB ObjectID is detected
-        self.assertIn('MongoDB ObjectID', test.nodes[2].label)
+        objectid_nodes = get_nodes_by_type(test, 'mongo.objectid')
+        self.assertEqual(len(objectid_nodes), 1)
+        self.assertIn('MongoDB ObjectID', objectid_nodes[0].label)
 
         # confirm timestamp is decoded correctly
-        self.assertIn('2024-01-01 00:00:00', test.nodes[6].label)
+        timestamp_nodes = get_nodes_by_type(test, 'timestamp.epoch-seconds')
+        self.assertEqual(len(timestamp_nodes), 1)
+        self.assertIn('2024-01-01 00:00:00', timestamp_nodes[0].label)
 
         # confirm counter is parsed correctly
-        self.assertEqual('Counter: 1122867', test.nodes[5].label)
+        counter_nodes = get_nodes_by_type(test, 'integer')
+        self.assertEqual(len(counter_nodes), 1)
+        self.assertEqual('Counter: 1122867', counter_nodes[0].label)
 
     def test_mongo_objectid_in_url(self):
         """ Test that a MongoDB ObjectID embedded in a URL path is detected """

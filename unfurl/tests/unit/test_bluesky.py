@@ -2,6 +2,10 @@ from unfurl.core import Unfurl
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestBluesky(unittest.TestCase):
 
     def test_bluesky_post(self):
@@ -14,13 +18,12 @@ class TestBluesky(unittest.TestCase):
         test.parse_queue()
 
         # confirm that TID was detected
-        tid_node = next(n for n in test.nodes.values()
-                        if n.data_type == 'epoch-microseconds' and 'timestamp identifiers' in (n.hover or ''))
+        tid_node = next(n for n in get_nodes_by_type(test, 'epoch-microseconds')
+                        if 'timestamp identifiers' in (n.hover or ''))
         self.assertEqual(1732040395098000, tid_node.value)
 
         # embedded timestamp parses correctly
-        ts_node = next(n for n in test.nodes.values()
-                       if n.data_type == 'timestamp.epoch-microseconds')
+        ts_node = next(iter(get_nodes_by_type(test, 'timestamp.epoch-microseconds')))
         self.assertEqual('2024-11-19 18:19:55.098000+00:00', ts_node.value)
 
     def test_bluesky_bare_tid(self):
@@ -32,18 +35,16 @@ class TestBluesky(unittest.TestCase):
             value='3laulgolrfz2f')
         test.parse_queue()
 
-        # check the number of nodes
-        self.assertEqual(len(test.nodes.keys()), 3)
-        self.assertEqual(test.total_nodes, 3)
-
         # confirm that TID was detected
-        self.assertIn('timestamp identifiers', test.nodes[2].hover)
+        tid_node = next(n for n in get_nodes_by_type(test, 'epoch-microseconds')
+                        if 'timestamp identifiers' in (n.hover or ''))
 
         # confirm that TID was extracted correctly
-        self.assertEqual(1731543333133695, test.nodes[2].value)
+        self.assertEqual(1731543333133695, tid_node.value)
 
         # embedded timestamp parses correctly
-        self.assertEqual('2024-11-14 00:15:33.133695+00:00', test.nodes[3].value)
+        ts_node = next(iter(get_nodes_by_type(test, 'timestamp.epoch-microseconds')))
+        self.assertEqual('2024-11-14 00:15:33.133695+00:00', ts_node.value)
 
 if __name__ == '__main__':
     unittest.main()

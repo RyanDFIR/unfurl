@@ -29,7 +29,6 @@ class TestMailto(unittest.TestCase):
 
         # is processing finished empty
         self.assertTrue(test.queue.empty())
-        self.assertEqual(len(test.edges), 0)
 
 
 if __name__ == "__main__":

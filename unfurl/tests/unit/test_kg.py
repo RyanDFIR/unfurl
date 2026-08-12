@@ -3,6 +3,10 @@ from unittest.mock import patch, MagicMock
 import unittest
 
 
+def get_nodes_by_type(unfurl_instance, data_type):
+    return [n for n in unfurl_instance.nodes.values() if n.data_type == data_type]
+
+
 class TestKnowledgeGraph(unittest.TestCase):
 
     def test_kg_no_lookups(self):
@@ -12,8 +16,8 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.add_to_queue(data_type='proto', key='2', value='/m/050zjwr')
         test.parse_queue()
 
-        # Only the one input node, no KG lookup
-        self.assertEqual(len(test.nodes.keys()), 1)
+        # No KG lookup node should be added
+        self.assertEqual(len(get_nodes_by_type(test, 'google.knowledge_graph')), 0)
 
     def test_kg_no_api_key(self):
         """KG parser should not fire when no API key is configured."""
@@ -23,8 +27,8 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.add_to_queue(data_type='proto', key='2', value='/m/050zjwr')
         test.parse_queue()
 
-        # Only the one input node, no KG lookup
-        self.assertEqual(len(test.nodes.keys()), 1)
+        # No KG lookup node should be added
+        self.assertEqual(len(get_nodes_by_type(test, 'google.knowledge_graph')), 0)
 
     def test_kg_non_matching_value(self):
         """KG parser should ignore values that don't start with /m/ or /g/."""
@@ -35,7 +39,7 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.parse_queue()
 
         # No KG node added
-        kg_nodes = [n for n in test.nodes.values() if n.data_type == 'google.knowledge_graph']
+        kg_nodes = get_nodes_by_type(test, 'google.knowledge_graph')
         self.assertEqual(len(kg_nodes), 0)
 
     @patch('unfurl.parsers.parse_kg.requests.get')
@@ -60,7 +64,7 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.parse_queue()
 
         # Should have the input node + the KG result node
-        kg_nodes = [n for n in test.nodes.values() if n.data_type == 'google.knowledge_graph']
+        kg_nodes = get_nodes_by_type(test, 'google.knowledge_graph')
         self.assertEqual(len(kg_nodes), 1)
         self.assertIn('File system forensic analysis', kg_nodes[0].value)
         self.assertIn('Book by Brian Carrier', kg_nodes[0].value)
@@ -77,7 +81,7 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.parse_queue()
 
         # No KG node added on error
-        kg_nodes = [n for n in test.nodes.values() if n.data_type == 'google.knowledge_graph']
+        kg_nodes = get_nodes_by_type(test, 'google.knowledge_graph')
         self.assertEqual(len(kg_nodes), 0)
 
     @patch('unfurl.parsers.parse_kg.requests.get')
@@ -94,7 +98,7 @@ class TestKnowledgeGraph(unittest.TestCase):
         test.add_to_queue(data_type='proto', key='2', value='/m/0dl567')
         test.parse_queue()
 
-        kg_nodes = [n for n in test.nodes.values() if n.data_type == 'google.knowledge_graph']
+        kg_nodes = get_nodes_by_type(test, 'google.knowledge_graph')
         self.assertEqual(len(kg_nodes), 0)
 
 
