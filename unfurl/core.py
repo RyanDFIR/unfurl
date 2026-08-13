@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2024 Ryan Benson
+# Copyright 2026 Ryan Benson
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,6 +55,71 @@ def load_config():
     return config
 
 
+REMOTE_LOOKUPS_ENV_VAR = 'UNFURL_REMOTE_LOOKUPS'
+
+# Enabling remote lookups from the environment is worth announcing, but the web app
+# builds an Unfurl per request, so say it once per process rather than every time.
+_warned_about_env_remote_lookups = False
+
+
+def remote_lookups_from_env():
+    """Whether UNFURL_REMOTE_LOOKUPS enables lookups, or None if it isn't set.
+
+    Accepts the same values the config file does ("true"/"yes"/"on"/"1" and their
+    negatives). An unset or empty variable means "not configured" and defers to the
+    config files; a value that can't be interpreted fails safe to disabled instead,
+    since ignoring it would quietly hand the decision to a config file that may enable
+    lookups.
+    """
+    global _warned_about_env_remote_lookups
+
+    raw = os.environ.get(REMOTE_LOOKUPS_ENV_VAR)
+    if not raw:
+        return None
+
+    enabled = configparser.ConfigParser.BOOLEAN_STATES.get(raw.strip().lower())
+    if enabled is None:
+        log.warning(
+            f'Could not interpret {REMOTE_LOOKUPS_ENV_VAR}="{raw}" as true/false; '
+            f'leaving remote lookups disabled.')
+        return False
+
+    if enabled and not _warned_about_env_remote_lookups:
+        log.warning(
+            f'Remote lookups enabled via {REMOTE_LOOKUPS_ENV_VAR}; data from the input '
+            f'will be sent to third-party APIs.')
+        _warned_about_env_remote_lookups = True
+
+    return enabled
+
+
+def resolve_remote_lookups(explicit=False, config=None):
+    """Decide whether remote lookups are allowed, disabled unless something enables them.
+
+    Precedence: an explicit request (the CLI's -l, which can only turn them on), then
+    UNFURL_REMOTE_LOOKUPS, then the config files. The environment beats the config file
+    so that a container can enable lookups without editing the mounted unfurl.ini.
+    """
+    if explicit:
+        return True
+
+    from_env = remote_lookups_from_env()
+    if from_env is not None:
+        return from_env
+
+    if config is None:
+        config = load_config()
+
+    if config.has_section('UNFURL_APP'):
+        try:
+            return bool(config['UNFURL_APP'].getboolean('remote_lookups', False))
+        # If we can't interpret it as a boolean, fail "safe" to not allowing lookups
+        except ValueError:
+            return False
+
+    return False
+
+
 class Unfurl:
     def __init__(self, remote_lookups=None):
         self.graph = networkx.DiGraph()
@@ -64,7 +129,6 @@ class Unfurl:
         self.next_id = 1
         self.queue = queue.Queue()
         self.api_keys = {}
-        self.remote_lookups = remote_lookups
         self.known_domain_lists = None
         self.node_limit = 500
         self.stash = {}
@@ -73,8 +137,7 @@ class Unfurl:
         if config.has_section('API_KEYS'):
             self.api_keys = config['API_KEYS']
 
-        if not self.remote_lookups and config.has_section('UNFURL_APP'):
-            self.remote_lookups = config['UNFURL_APP'].getboolean('remote_lookups', False)
+        self.remote_lookups = resolve_remote_lookups(explicit=remote_lookups, config=config)
 
         if not self.known_domain_lists:
             self.build_known_domain_lists()

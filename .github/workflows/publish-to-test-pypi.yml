@@ -1,7 +1,13 @@
 name: Publish to Test PyPI
 
+# Stage one of a release: publish the GitHub release marked as a pre-release and the
+# artifact lands on Test PyPI. Converting it to a full release later triggers
+# publish-to-pypi.yml. Draft releases cannot be used here - GitHub Actions is not
+# triggered by draft release activity.
 on:
-  workflow_dispatch
+  release:
+    types: [prereleased]
+  workflow_dispatch:
 
 jobs:
   build-n-publish:
@@ -13,25 +19,20 @@ jobs:
     permissions:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
-    - uses: actions/checkout@master
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v1
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10' 
-    - name: Install pypa/build
-      run: >-
-        python -m
-        pip install
-        build
-        --user
+        python-version: '3.12'
+    - name: Install pypa/build and twine
+      run: python -m pip install build twine
     - name: Build a binary wheel and a source tarball
-      run: >-
-        python -m
-        build
-        --sdist
-        --wheel
-        --outdir dist/
-        .
+      run: python -m build --sdist --wheel --outdir dist/ .
+    - name: Check distribution metadata
+      run: python -m twine check dist/*
     - name: Publish distribution 📦 to Test PyPI
-      if: startsWith(github.ref, 'refs/tags/')
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        # The version is date-based, so re-running for the same version is expected.
+        skip-existing: true

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "setuptools-scm>=8.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,16 +7,14 @@ name = "dfir-unfurl"
 authors = [{name = "Ryan Benson", email = "ryan@dfir.blog"}]
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3"
 ]
 dynamic = ["dependencies", "optional-dependencies", "version"]
 description = "Unfurl takes a URL and expands (\"unfurls\") it into a directed graph"
 keywords=["unfurl", "forensics", "dfir", "reverse-engineering", "security", "osint", "digital forensics"]
-
-[tool.setuptools_scm]
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
@@ -29,4 +27,4 @@ unfurl = "unfurl.cli:command_line_interface"
 unfurl_app = "unfurl.app:web_app"
 
 [project.urls]
-Home = "https://github.com/obsidianforensics/unfurl"
+Home = "https://github.com/RyanDFIR/unfurl"

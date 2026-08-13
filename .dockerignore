@@ -1,0 +1,21 @@
+# Keep secrets out of the image. unfurl.local.ini holds real API keys; the Dockerfile
+# does "COPY . /unfurl/", so without this it would be baked into an image layer (and
+# would remain in that layer even if a later step deleted it). Supply keys to the
+# container at runtime instead - as environment variables, or by mounting the file.
+unfurl.local.ini
+
+.git
+.gitignore
+.github/
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv*/
+venv*/
+build/
+dist/
+
+.idea/
+.vscode/
+.ipynb_checkpoints/
