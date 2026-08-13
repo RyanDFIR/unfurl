@@ -14,7 +14,6 @@
 
 import requests
 import json
-import os
 
 from bs4 import BeautifulSoup
 
@@ -127,7 +126,7 @@ def run(unfurl, node):
 
     bitly_domains = ['bit.ly', 'bitly.com', 'j.mp']
     if any(unfurl.preceding_domain_matches(node, d) for d in bitly_domains):
-        expanded_info = expand_bitly_url(short_code, unfurl.api_keys.get('bitly', os.environ.get('bitly')))
+        expanded_info = expand_bitly_url(short_code, unfurl.get_api_key('bitly'))
 
         if not expanded_info:
             return

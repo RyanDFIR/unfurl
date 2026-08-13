@@ -18,6 +18,7 @@ import configparser
 import logging
 import importlib
 import networkx
+import os
 import queue
 import re
 import unfurl.parsers
@@ -26,6 +27,32 @@ from pymispwarninglists import WarningLists
 from unfurl import utils
 
 log = logging.getLogger(__name__)
+
+
+def config_paths():
+    """Ordered list of config files to read; earlier files are overridden by later ones.
+
+    "unfurl.ini" is tracked in git and ships with empty API keys, so it works as a
+    template for anyone cloning the repo. "unfurl.local.ini" is gitignored and holds
+    real keys and machine-specific settings. Each is looked for both alongside the
+    installed/cloned package and in the current working directory, so Unfurl finds its
+    config when run from somewhere other than the repo root.
+
+    All templates are listed before all local files so that a local value always wins,
+    even over a template in a more specific directory — a template's empty API keys
+    must never clobber real ones.
+    """
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    search_dirs = [package_root, os.getcwd()]
+    return ([os.path.join(d, 'unfurl.ini') for d in search_dirs]
+            + [os.path.join(d, 'unfurl.local.ini') for d in search_dirs])
+
+
+def load_config():
+    """Read Unfurl's layered config. configparser silently skips files that don't exist."""
+    config = configparser.ConfigParser()
+    config.read(config_paths())
+    return config
 
 
 class Unfurl:
@@ -42,16 +69,54 @@ class Unfurl:
         self.node_limit = 500
         self.stash = {}
 
-        config = configparser.ConfigParser()
-        config.read('unfurl.ini')
+        config = load_config()
         if config.has_section('API_KEYS'):
             self.api_keys = config['API_KEYS']
 
         if not self.remote_lookups and config.has_section('UNFURL_APP'):
-            self.remote_lookups = config['UNFURL_APP'].getboolean('remote_lookups')
+            self.remote_lookups = config['UNFURL_APP'].getboolean('remote_lookups', False)
 
         if not self.known_domain_lists:
             self.build_known_domain_lists()
+
+    @staticmethod
+    def api_key_env_var(name):
+        """The environment variable holding the API key for config key `name`.
+
+        Namespaced and uppercased by convention: "virustotal" -> UNFURL_VIRUSTOTAL_API_KEY.
+        Env var names are case-sensitive everywhere except Windows, so a bare lowercase
+        name works on one platform and silently fails on another.
+        """
+        return f'UNFURL_{name.upper()}_API_KEY'
+
+    def get_api_key(self, name):
+        """Return the configured API key called `name`, or None if there isn't one.
+
+        Resolution order: the config files, then the namespaced environment variable,
+        then the bare lowercase environment variable older versions used.
+
+        An empty value counts as "not set" at every level. That matters because the
+        tracked unfurl.ini template lists every key with an empty value, so treating one
+        as a real key would stop the environment from ever being consulted.
+        """
+        configured = self.api_keys.get(name)
+        if configured:
+            return configured
+
+        namespaced = os.environ.get(self.api_key_env_var(name))
+        if namespaced:
+            return namespaced
+
+        # Deprecated, but still honored: pip installs ship no unfurl.ini, so for those
+        # users a bare lowercase env var was the only way to supply a key that worked.
+        legacy = os.environ.get(name)
+        if legacy:
+            log.warning(
+                f'Using deprecated environment variable "{name}"; rename it to '
+                f'"{self.api_key_env_var(name)}".')
+            return legacy
+
+        return None
 
     class Node:
         def __init__(self, node_id, data_type, key, value, label=None, hover=None,

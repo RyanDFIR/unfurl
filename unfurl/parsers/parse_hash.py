@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import requests
 from unfurl import utils
+
+log = logging.getLogger(__name__)
 
 hash_edge = {
     'color': {
@@ -43,8 +47,13 @@ def nitrxgen_md5_lookup(value):
 
 def virustotal_lookup(unfurl, hash_value):
 
+    api_key = unfurl.get_api_key('virustotal')
+    if not api_key:
+        log.warning('No API key for VirusTotal; skipping lookup.')
+        return
+
     response = requests.get(f'https://www.virustotal.com/api/v3/files/{hash_value}',
-                            headers={'x-apikey': unfurl.api_keys.get('virustotal')}, timeout=3)
+                            headers={'x-apikey': api_key}, timeout=3)
 
     if response.status_code == 200:
         try:
