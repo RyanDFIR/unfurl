@@ -118,3 +118,7 @@ dmypy.json
 /dfir_unfurl.egg-info/
 /build/
 /.claude/settings.local.json
+
+# Local config overrides (real API keys, machine-specific settings).
+# The tracked unfurl.ini is a template; unfurl.local.ini overrides it.
+unfurl.local.ini

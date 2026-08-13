@@ -79,6 +79,63 @@ optional arguments:
 1. `cd unfurl`
 1. `docker-compose up -d`
 
+## Configuration
+
+Unfurl reads its settings from `unfurl.ini`:
+
+```ini
+[UNFURL_APP]
+host = localhost
+port = 5000
+remote_lookups = false
+debug = false
+
+[API_KEYS]
+bitly =
+virustotal =
+google_kg =
+```
+
+`remote_lookups` controls whether Unfurl may send data from the URL being analyzed to
+external destinations, including third-party APIs (VirusTotal, Bitly, and Google Knowledge 
+Graph). It is `false` by default, and the API keys are only used when it is enabled.
+
+### Setting your own values
+
+`unfurl.ini` is tracked in git as a template, so it ships with empty API keys. Rather
+than editing it — which risks committing your keys — put your values in
+**`unfurl.local.ini`** next to it. That file is gitignored, and anything in it overrides
+`unfurl.ini`:
+
+```ini
+[UNFURL_APP]
+remote_lookups = true
+
+[API_KEYS]
+virustotal = <your key>
+```
+
+Only the values you want to change need to appear; anything omitted falls back to
+`unfurl.ini`. Both files are looked for alongside the installed package and in the
+current working directory.
+
+### Environment variables
+
+API keys can also be supplied as environment variables, which are used when neither
+config file sets that key:
+
+| Config key | Environment variable |
+|---|---|
+| `bitly` | `UNFURL_BITLY_API_KEY` |
+| `virustotal` | `UNFURL_VIRUSTOTAL_API_KEY` |
+| `google_kg` | `UNFURL_GOOGLE_KG_API_KEY` |
+
+Older versions read a bare lowercase variable instead (`virustotal`, `bitly`,
+`google_kg`). Those still work, but are deprecated and log a warning — rename them to the
+`UNFURL_*_API_KEY` form above. The bare names are easy to collide with, and because
+environment variables are case-sensitive on Linux and macOS but not on Windows, they can
+work on one platform and silently do nothing on another.
+
 ## Testing 
 
 1. All tests are run automatically on each PR by Travis CI. Tests need to pass before merging. 

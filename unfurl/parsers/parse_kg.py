@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 
 import requests
 
@@ -35,7 +34,7 @@ def run(unfurl, node):
     if not node.value.startswith(('/m/', '/g/')):
         return
 
-    api_key = unfurl.api_keys.get('google_kg', os.environ.get('google_kg'))
+    api_key = unfurl.get_api_key('google_kg')
     if not api_key:
         log.warning('No API key for Google Knowledge Graph; skipping lookup.')
         return
