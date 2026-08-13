@@ -1,8 +1,12 @@
 name: Publish to PyPI
 
+# Stage two of a release: edit the pre-release that publish-to-test-pypi.yml already
+# validated and untick "pre-release". The "released" activity type fires both when a
+# release is published outright and when a pre-release is converted to a release, so the
+# artifact published here is built from the same commit that went to Test PyPI.
 on:
   release:
-    types: [created]
+    types: [released]
 
 jobs:
   build-n-publish:
@@ -14,25 +18,16 @@ jobs:
     permissions:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
-    - uses: actions/checkout@master
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v1
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10' 
-    - name: Install pypa/build
-      run: >-
-        python -m
-        pip install
-        build
-        --user
+        python-version: '3.12'
+    - name: Install pypa/build and twine
+      run: python -m pip install build twine
     - name: Build a binary wheel and a source tarball
-      run: >-
-        python -m
-        build
-        --sdist
-        --wheel
-        --outdir dist/
-        .
+      run: python -m build --sdist --wheel --outdir dist/ .
+    - name: Check distribution metadata
+      run: python -m twine check dist/*
     - name: Publish distribution 📦 to PyPI
-      if: startsWith(github.ref, 'refs/tags/')
       uses: pypa/gh-action-pypi-publish@release/v1

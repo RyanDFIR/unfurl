@@ -30,6 +30,8 @@ page with an interesting URL, you can click the bookmarklet and see the URL "unf
 
 ### Local Python Install
 
+Unfurl requires Python 3.11 or newer.
+
 1. Install via pip: `pip install dfir-unfurl[all]`
 
 After Unfurl is installed, you can run use it via the web app or command-line:
@@ -63,21 +65,47 @@ Example: `unfurl "https://www.google.com/search?&ei=yTLGXeyKN_2y0PEP2smVuAg&q=df
 
 `unfurl` has a number of command line options to modify its behavior:
 ```
-optional arguments:
+positional arguments:
+  what_to_unfurl        what to unfurl. typically this is a URL, but it also
+                        supports integers (timestamps), encoded protobufs, and
+                        more. if this is instead a file path, unfurl will open
+                        that file and process each line in it as a separate
+                        input.
+
+options:
   -h, --help            show this help message and exit
   -d, --detailed        show more detailed explanations.
-  -f FILTER, --filter FILTER
-                        only output lines that match this filter.
-  -o OUTPUT, --output OUTPUT
-                        file to save output (as CSV) to. if omitted, output is sent to stdout (typically this means displayed in the console).
+  -f, --filter FILTER   only output lines that match this filter.
+  -l, --lookups         allow remote lookups to enhance results.
+  -o, --output OUTPUT   file to save output (as CSV) to. if omitted, output is
+                        sent to stdout (typically this means displayed in the
+                        console).
+  -t, --type {tree,json}
+                        Type of output to produce
   -v, -V, --version     show program's version number and exit
 ```
 
+`-l` enables remote lookups for a single run; see [Configuration](#configuration) to turn
+them on persistently.
+
 ### Docker 
 
-1. `git clone https://github.com/obsidianforensics/unfurl`
+1. `git clone https://github.com/RyanDFIR/unfurl`
 1. `cd unfurl`
-1. `docker-compose up -d`
+1. `docker compose up -d`
+
+`docker-compose.yaml` mounts the repo's `unfurl.ini` into the container read-only.
+`unfurl.local.ini` is *not* mounted, and `.dockerignore` keeps it out of the image, so
+your API keys are never baked into an image layer. Pass them — and the remote-lookups
+switch, which is off by default — to the container as environment variables instead, via
+the `environment:` block in `docker-compose.yaml`:
+
+```yaml
+    environment:
+      - PYTHONUNBUFFERED=1
+      - UNFURL_REMOTE_LOOKUPS=true
+      - UNFURL_VIRUSTOTAL_API_KEY=<your key>
+```
 
 ## Configuration
 
@@ -121,14 +149,23 @@ current working directory.
 
 ### Environment variables
 
-API keys can also be supplied as environment variables, which are used when neither
-config file sets that key:
+Settings can also be supplied as environment variables, which is usually the most
+convenient way to configure a container:
 
-| Config key | Environment variable |
-|---|---|
-| `bitly` | `UNFURL_BITLY_API_KEY` |
-| `virustotal` | `UNFURL_VIRUSTOTAL_API_KEY` |
-| `google_kg` | `UNFURL_GOOGLE_KG_API_KEY` |
+| Config key | Environment variable | |
+|---|---|---|
+| `bitly` | `UNFURL_BITLY_API_KEY` | used when neither config file sets that key |
+| `virustotal` | `UNFURL_VIRUSTOTAL_API_KEY` | " |
+| `google_kg` | `UNFURL_GOOGLE_KG_API_KEY` | " |
+| `remote_lookups` | `UNFURL_REMOTE_LOOKUPS` | **overrides** both config files |
+
+`UNFURL_REMOTE_LOOKUPS` takes the same values as the config file (`true`/`yes`/`on`/`1`
+and their negatives). Unlike the API keys, it *overrides* the config files rather than
+falling back to them — otherwise it would be useless in a container, where `unfurl.ini`
+is mounted from the host. Because enabling it means data from the input gets sent to
+third parties, Unfurl logs a warning when the environment turns it on, and any value it
+can't interpret leaves lookups disabled rather than falling through to the config file.
+The CLI's `-l` still wins over both.
 
 Older versions read a bare lowercase variable instead (`virustotal`, `bitly`,
 `google_kg`). Those still work, but are deprecated and log a warning — rename them to the
@@ -138,9 +175,23 @@ work on one platform and silently do nothing on another.
 
 ## Testing 
 
-1. All tests are run automatically on each PR by Travis CI. Tests need to pass before merging. 
+1. All tests are run automatically on each PR by GitHub Actions. Tests need to pass before merging. 
 1. While not required, it is strongly encouraged to add tests that cover any new features in a PR. 
 1. To manually run all tests (units and integration): ``python -m unittest discover -s unfurl/tests``
 
 If using Docker as above, run: 
 ``docker exec unfurl python -m unittest discover -s unfurl/tests``
+
+### Validating an installed copy
+
+The tests ship with the package, so you can run them against the exact copy you have
+installed rather than against a fresh checkout. That is useful for validating the tool in
+the environment you'll actually use it in:
+
+```
+python -m unittest discover -s unfurl.tests.unit
+```
+
+This works from any directory. Use `-s unfurl.tests` to include the integration tests as
+well; those exercise the web API and need the `ui` extra (`pip install dfir-unfurl[ui]`)
+for Flask. Neither set requires network access.

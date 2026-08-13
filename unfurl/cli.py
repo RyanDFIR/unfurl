@@ -28,7 +28,7 @@ def command_line_interface():
         'what_to_unfurl',
         help='what to unfurl. typically this is a URL, but it also supports integers (timestamps), '
              'encoded protobufs, and more. if this is instead a file path, unfurl will open '
-             'that file and process each line in it as a URL.')
+             'that file and process each line in it as a separate input.')
     parser.add_argument(
         '-d', '--detailed', help='show more detailed explanations.', action='store_true')
     parser.add_argument(

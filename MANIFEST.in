@@ -1,6 +1,17 @@
 recursive-include unfurl *
-recursive-exclude unfurl/tests *
-include unfurl_app.py
-include unfurl_cli.py
+
+# Tests ship with the package on purpose, so an installed copy can be validated in the
+# environment it will be used in. Keep this in step with the wheel, which includes them
+# via package discovery.
+
+# "recursive-include unfurl *" sweeps up whatever happens to be in the working tree,
+# including build artifacts and editor state. Keep those out of the sdist.
+global-exclude *.py[cod]
+global-exclude __pycache__/*
+global-exclude .ipynb_checkpoints/*
+
+# Never ship local config: it holds real API keys.
+exclude unfurl.local.ini
+
 include README.md
 include LICENSE

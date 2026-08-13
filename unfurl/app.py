@@ -19,7 +19,7 @@ from flask import Flask, render_template, request, redirect, url_for
 from flask_cors import CORS
 from flask_restx import Api, Namespace, Resource
 from urllib.parse import unquote
-from unfurl.core import load_config, run
+from unfurl.core import load_config, resolve_remote_lookups, run
 
 unfurl_app_host = None
 unfurl_app_port = None
@@ -98,6 +98,7 @@ class JsonVisJS(Resource):
 def web_app(host='localhost', port='5000', debug='True', remote_lookups=False):
 
     config = load_config()
+    remote_lookups = resolve_remote_lookups(explicit=remote_lookups, config=config)
 
     if config.has_section('UNFURL_APP'):
         # Fall back to the caller's values for anything the config doesn't set, rather
@@ -105,11 +106,6 @@ def web_app(host='localhost', port='5000', debug='True', remote_lookups=False):
         host = config['UNFURL_APP'].get('host', host)
         port = config['UNFURL_APP'].get('port', port)
         debug = config['UNFURL_APP'].getboolean('debug', debug)
-        try:
-            remote_lookups = config['UNFURL_APP'].getboolean('remote_lookups', remote_lookups)
-        # If we can't interpret it as a boolean, fail "safe" to not allowing lookups
-        except ValueError:
-            remote_lookups = False
 
     UnfurlApp(
         unfurl_debug=debug,
