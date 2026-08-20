@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import mimetypes
 import pycountry
 import re
 import urllib.parse
+
+from unfurl import utils
+from unfurl.file_types import lookup_extension
 
 urlparse_edge = {
     'color': {
@@ -301,17 +303,31 @@ def run(unfurl, node):
             try_url_unquote(unfurl, node)
 
     elif node.data_type == 'url.path.segment':
-        for file_type in mimetypes.types_map.keys():
-            if node.value.endswith(file_type):
-                unfurl.add_to_queue(
-                    data_type='file.name', key='File Name',
-                    value=urllib.parse.unquote_plus(node.value[:-len(file_type)]),
-                    parent_id=node.node_id, incoming_edge_config=urlparse_edge)
-                unfurl.add_to_queue(
-                    data_type='file.ext', key='File Extension', value=node.value[-len(file_type):],
-                    hover=f'The data type typically associated with <b>{file_type}</b> '
-                          f'is <b>{mimetypes.types_map[file_type]}</b>',
-                    parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+        match = lookup_extension(node.value)
+        if match:
+            extension, file_type = match
+
+            hover = f'The data type typically associated with <b>{extension}</b> ' \
+                    f'is <b>{file_type.media_type}</b>'
+            if file_type.description:
+                hover += f' ({file_type.description})'
+            hover += '.'
+            if file_type.note:
+                # Wrap each paragraph before joining them. wrap_hover_text leaves any
+                # text that already contains a <br> alone -- the author is assumed to
+                # have chosen the breaks -- so adding the separator first would mean
+                # the note never gets wrapped at all.
+                hover = f'{utils.wrap_hover_text(hover)}<br><br>' \
+                        f'{utils.wrap_hover_text(file_type.note)}'
+
+            unfurl.add_to_queue(
+                data_type='file.name', key='File Name',
+                value=urllib.parse.unquote_plus(node.value[:-len(extension)]),
+                parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+            unfurl.add_to_queue(
+                data_type='file.ext', key='File Extension', value=extension,
+                hover=hover,
+                parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
     else:
         if not isinstance(node.value, str):
