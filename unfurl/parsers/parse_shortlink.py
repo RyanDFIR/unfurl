@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import requests
 import json
 
 from bs4 import BeautifulSoup
+
+log = logging.getLogger(__name__)
 
 
 shortlink_edge = {
@@ -41,12 +44,46 @@ def expand_bitly_url(bitlink_id, api_key):
         return {}
 
 def parse_linkedin_slink_url(shortcode):
+    """Expand a LinkedIn short link by scraping its interstitial page.
+
+    LinkedIn serves an "are you sure you want to leave" page rather than redirecting, so
+    the destination has to be read out of the markup. That makes this the most brittle
+    expander here: the selector depends on LinkedIn's page structure, which carries no
+    compatibility promise and is not served at all to a client LinkedIn declines to
+    answer -- a sign-in wall, a rate limit, or a datacenter IP being turned away.
+
+    Every one of those cases has to return empty rather than raise. `run_plugins`
+    catches exceptions, so raising here still "worked", but it logged a traceback and
+    told an analyst nothing about whether the link failed to expand or was never tried.
+    """
+
     r = requests.get(url=f'https://www.linkedin.com/slink?code={shortcode}', timeout=3)
+
+    if r.status_code != 200:
+        # 999 is LinkedIn's own "no thanks" status for clients it declines to serve.
+        log.warning(
+            f'LinkedIn returned HTTP {r.status_code} for short link "{shortcode}"; '
+            f'cannot expand it.')
+        return {}
+
     soup = BeautifulSoup(r.content, 'html.parser')
-    link = soup.select_one("main a.artdeco-button")
-    if link.get('href'):
-        return link.get('href')
-    return {}
+
+    # Scoped to <main> on purpose: LinkedIn puts a "learn more" link with the same
+    # artdeco-button class elsewhere on the page, and expanding to that would report
+    # LinkedIn's own help article as this link's destination.
+    link = soup.select_one('main a.artdeco-button')
+    if link is None:
+        log.warning(
+            f'No destination link found on the LinkedIn interstitial for "{shortcode}". '
+            f'LinkedIn may have changed the page, or declined to serve it.')
+        return {}
+
+    href = link.get('href')
+    if not href:
+        log.warning(f'LinkedIn interstitial for "{shortcode}" had a link with no href.')
+        return {}
+
+    return href
 
 
 def expand_vdg_url(shortcode):
