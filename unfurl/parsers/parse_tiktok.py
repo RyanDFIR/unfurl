@@ -111,6 +111,7 @@ def create_tiktok_id(timestamp=None, days_ahead=None, sequence=1, machine_id=1, 
 
     return int(timestamp_bits + sequence_bits + machine_id_bits + entity_type_bits)
 
+
 def run(unfurl, node):
     min_reasonable_id = create_tiktok_id('2017-12-01T00:00:00')
     max_reasonable_id = create_tiktok_id(days_ahead=365)

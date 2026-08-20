@@ -115,7 +115,7 @@ shortlink_edge = {
     'title': 'URL Shortener Parser',
     'label': '🔗'
 }
-  
+
 
 def expand_bitly_url(bitlink_id, api_key):
     # Ref: https://dev.bitly.com/v4/
@@ -129,6 +129,7 @@ def expand_bitly_url(bitlink_id, api_key):
         return r.json()
     else:
         return {}
+
 
 def parse_linkedin_slink_url(shortcode):
     """Expand a LinkedIn short link by scraping its interstitial page.

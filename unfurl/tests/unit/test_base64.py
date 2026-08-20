@@ -59,7 +59,6 @@ class TestBase64(unittest.TestCase):
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
 
-
     def test_explicit_base64_decodes_directly(self):
         """ A node explicitly labelled 'base64' decodes directly, bypassing the
         auto-detection heuristics."""

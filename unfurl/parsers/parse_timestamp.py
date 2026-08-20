@@ -91,6 +91,7 @@ def decode_epoch_centiseconds(centiseconds):
         'timestamp_value': converted_ts
     }
 
+
 def decode_epoch_milliseconds(milliseconds):
     """Decode a numeric timestamp in Epoch milliseconds format to a human-readable timestamp.
 
@@ -136,6 +137,7 @@ def decode_epoch_ten_microseconds(ten_microseconds):
         'display_type': 'Epoch ten-microsecond increments',
         'timestamp_value': converted_ts
     }
+
 
 def decode_epoch_microseconds(microseconds):
     """Decode a numeric timestamp in Epoch microseconds format to a human-readable timestamp.
@@ -214,6 +216,7 @@ def decode_webkit(microseconds):
         'timestamp_value': str(converted_ts)
     }
 
+
 def decode_webkit_milliseconds(milliseconds):
     """Decode a numeric timestamp in Webkit milliseconds format to a human-readable timestamp.
 
@@ -250,13 +253,14 @@ def decode_windows_filetime(intervals):
       2065: 146424672000000000
 
     """
-    converted_ts =  datetime.datetime.fromtimestamp((float(intervals) / 10000000) - 11644473600, tz=datetime.UTC)
+    converted_ts = datetime.datetime.fromtimestamp((float(intervals) / 10000000) - 11644473600, tz=datetime.UTC)
 
     return {
         'data_type': 'timestamp.windows-filetime',
         'display_type': 'Windows FileTime',
         'timestamp_value': str(converted_ts)
     }
+
 
 def decode_datetime_ticks(ticks):
     """Decode a numeric timestamp in .Net/C# DateTime ticks format to a human-readable timestamp.

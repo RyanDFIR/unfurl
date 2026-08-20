@@ -93,7 +93,7 @@ def run(unfurl, node):
                           '<br><br>Unfurl differentiates between them based on potential timestamp values. There is '
                           '<br>a chance of misidentifying them, as they use the same structure. UUIDv4 is more common, '
                           '<br>but Unfurl is parsing this as an "Ordered UUID" to show the potential timestamp.',
-                    extra_options= {'widthConstraint': {'maximum': 250}},
+                    extra_options={'widthConstraint': {'maximum': 250}},
                     parent_id=node.node_id, incoming_edge_config=uuid_edge)
 
                 unfurl.add_to_queue(

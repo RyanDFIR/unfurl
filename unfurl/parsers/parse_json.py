@@ -28,6 +28,7 @@ json_edge = {
 json_hover_text = ('This was parsed as JavaScript Object Notation (JSON), <br>'
                    'which uses human-readable text to store and transmit data objects')
 
+
 def run(unfurl, node):
 
     if node.data_type in ('url.query.pair', 'string'):

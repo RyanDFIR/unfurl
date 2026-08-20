@@ -123,7 +123,6 @@ class TestGoogle(unittest.TestCase):
         # make sure the queue finished empty
         self.assertTrue(test.queue.empty())
 
-
     def test_google_url_redirect(self):
         """Test that google.com/url redirects are parsed correctly.
 
@@ -165,7 +164,6 @@ class TestGoogle(unittest.TestCase):
         usg_node = next(n for n in test.nodes.values()
                         if n.data_type == 'url.query.pair' and n.key == 'usg')
         self.assertIn('signature', hover_text(usg_node).lower())
-
 
     def test_google_aclk_ad_click(self):
         """Test that google.com/aclk ad click URLs are parsed correctly.

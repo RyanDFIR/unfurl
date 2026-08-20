@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import base64
-from typing import Union
+from typing import Literal, Union
 import re
 import requests
 
@@ -85,7 +85,9 @@ def add_resolved_did_node(unfurl: unfurl.core.Unfurl, node: unfurl.core.Unfurl.N
         parent_id=node.node_id, incoming_edge_config=bluesky_edge)
 
 
-def get_did_plc_audit_log_values(unfurl: unfurl.core.Unfurl, did: str, record_index: int = None, field: str = None) -> Union[str, dict, False]:
+def get_did_plc_audit_log_values(
+        unfurl: unfurl.core.Unfurl, did: str, record_index: int | None = None,
+        field: str | None = None) -> Union[str, dict, Literal[False]]:
     if not unfurl.remote_lookups:
         return False
     r = requests.get(f'https://plc.directory/{did}/log/audit', timeout=3)

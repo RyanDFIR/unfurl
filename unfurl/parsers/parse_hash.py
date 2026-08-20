@@ -103,7 +103,7 @@ def run(unfurl, node):
 
             if hash_plaintext:
                 unfurl.add_to_queue(
-                    data_type=f'text', key='Plaintext',
+                    data_type='text', key='Plaintext',
                     value=hash_plaintext,
                     hover='Queried Nitrxgen database of MD5 hashes and found a matching plaintext value',
                     parent_id=node.node_id, incoming_edge_config=hash_lookup_edge)
@@ -122,7 +122,7 @@ def run(unfurl, node):
                     label_text += f'\nReputation: {vt_results.get("reputation")};'
 
                 unfurl.add_to_queue(
-                    data_type=f'text', key='Hash found on VirusTotal',
+                    data_type='text', key='Hash found on VirusTotal',
                     value=None, label=label_text,
                     hover='Queried VirusTotal with the hash value and found a match.',
                     parent_id=node.node_id, incoming_edge_config=hash_lookup_edge)
@@ -146,7 +146,7 @@ def run(unfurl, node):
             cisco_type_7_plaintext = decode_cisco_type_7(node.value)
             if cisco_type_7_plaintext:
                 unfurl.add_to_queue(
-                    data_type=f'text', key=f'Cisco "Type 7" encoding', value=cisco_type_7_plaintext,
+                    data_type='text', key='Cisco "Type 7" encoding', value=cisco_type_7_plaintext,
                     label=f'Cisco "Type 7" encoding; plaintext is "{cisco_type_7_plaintext}"',
                     hover='Cisco "Type 7" password encoding is based<br> on XOR and is easily reversible '
                           '[<a hre="https://passlib.readthedocs.io/en/stable/lib/passlib.hash.cisco_type7.html">'
@@ -186,4 +186,3 @@ def run(unfurl, node):
                 data_type=f'hash.{hash_name.lower()}', key=f'{hash_name} Hash',
                 value=new_node_value, label=f'Potential {hash_name} hash',
                 hover=hash_hover, parent_id=node.node_id, incoming_edge_config=hash_edge)
-
