@@ -156,7 +156,13 @@ class TestShortlinkExpansionLoop(unittest.TestCase):
 
         test, _ = self.run_with_mocked_redirect()
 
-        self.assertTrue(any(node.data_type == 'url' and 'onedrive.live.com' in str(node.value)
+        # Match the parsed hostname exactly rather than looking for the host as a
+        # substring of the URL. "onedrive.live.com" appears in a URL that merely mentions
+        # it -- https://evil.example/?next=onedrive.live.com would satisfy a substring
+        # check -- so the exact comparison is the assertion actually meant here.
+        self.assertTrue(any(node.data_type == 'url.hostname' and node.value == 'onedrive.live.com'
+                            for node in test.nodes.values()))
+        self.assertTrue(any(node.data_type == 'url' and node.value == self.REDIRECT_TARGET
                             for node in test.nodes.values()))
         self.assertTrue(any(node.data_type == 'url.query.pair' and node.key == 'resid'
                             for node in test.nodes.values()))
