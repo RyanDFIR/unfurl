@@ -12,6 +12,7 @@ __all__ = [
     "parse_dropbox",
     "parse_facebook",
     "parse_duckduckgo",
+    "parse_gmail",
     "parse_google",
     "parse_hash",
     "parse_initial_node",
