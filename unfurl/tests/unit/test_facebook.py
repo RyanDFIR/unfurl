@@ -1,5 +1,16 @@
 from unfurl.core import Unfurl
+import re
 import unittest
+
+
+def hover_text(node):
+    """A node's hover with markup removed and whitespace collapsed.
+
+    Hover text is wrapped for display, which inserts <br> at positions that depend on the
+    exact wording. Matching against the raw value makes an assertion pass or fail on where
+    a line break happened to land, so match against what the reader actually sees.
+    """
+    return ' '.join(re.sub(r'<[^>]+>', ' ', node.hover or '').split())
 
 
 def has_node(unfurl_instance, **criteria):
@@ -26,11 +37,11 @@ class TestFacebook(unittest.TestCase):
         # u and h get hover text only from our parser
         for node in u.nodes.values():
             if node.data_type == 'url.query.pair' and node.key == 'h':
-                self.assertIn('verification hash', node.hover)
+                self.assertIn('verification hash', hover_text(node))
                 break
         for node in u.nodes.values():
             if node.data_type == 'url.query.pair' and node.key == 'u':
-                self.assertIn('destination URL', node.hover)
+                self.assertIn('destination URL', hover_text(node))
                 break
 
     def test_redirect_lsr_php_hover(self):
@@ -41,7 +52,7 @@ class TestFacebook(unittest.TestCase):
             '&ext=1442879836&hash=AcnnZ5k0wBh4ZaGZFmBXimGK')
         for node in u.nodes.values():
             if node.data_type == 'url.query.pair' and node.key == 'ext':
-                self.assertIn('timestamp', node.hover.lower())
+                self.assertIn('timestamp', hover_text(node).lower())
                 break
 
     def test_profile_php_id(self):
@@ -109,7 +120,7 @@ class TestFacebook(unittest.TestCase):
         self.assertFalse(has_node(u, data_type='facebook.mibextid'))
         for node in u.nodes.values():
             if node.data_type == 'url.query.pair' and node.key == 'mibextid':
-                self.assertIn('Mobile', node.hover)
+                self.assertIn('Mobile', hover_text(node))
                 break
         else:
             self.fail('mibextid query pair node not found')

@@ -23,6 +23,8 @@ import zlib
 from datetime import datetime, timezone
 from typing import Union
 
+# A complete <a ...>...</a>, treated as one unbreakable unit when wrapping hover text.
+anchor_re = re.compile(r'<a\b[^>]*>.*?</a>', re.IGNORECASE | re.DOTALL)
 long_int_re = re.compile(r'\d{8,}')
 urlsafe_b64_re = re.compile(r'[A-Za-z0-9_\-]{8,}={0,2}')
 standard_b64_re = re.compile(r'[A-Za-z0-9+/]{8,}={0,2}')
@@ -157,9 +159,9 @@ def wrap_hover_text(hover_text: Union[str, None]) -> Union[str, None]:
     if not isinstance(hover_text, str):
         return None
 
-    # If there are any manually-inserted <br> or links, leave it
+    # If there are any manually inserted <br> or links, leave it
     # alone. This isn't perfect detection, but it'll do.
-    if '<a' in hover_text or '<br' in hover_text:
+    if '<br' in hover_text:
         return hover_text
 
     # If the text is just a little long, I'd rather have it all on
@@ -167,9 +169,25 @@ def wrap_hover_text(hover_text: Union[str, None]) -> Union[str, None]:
     if len(hover_text) < 70:
         return hover_text
 
+    # Hold each <a>...</a> aside as a single unbreakable token, so a line break can
+    # never land inside a tag and split an href in half. The placeholder is shorter
+    # than the markup it stands in for, which is what we want: lines are measured by
+    # roughly what the reader sees rather than by the length of the HTML.
+    anchors = []
+
+    def stash_anchor(match):
+        anchors.append(match.group(0))
+        return f'\x00{len(anchors) - 1}\x00'
+
+    stashed = anchor_re.sub(stash_anchor, hover_text)
+
     # "Wrap" the hover text by splitting it into lines of length <width>,
     # then joining them together with a <br>.
-    return '<br>'.join(textwrap.wrap(hover_text, width=60))
+    wrapped = '<br>'.join(textwrap.wrap(stashed, width=60))
+
+    for index, anchor in enumerate(anchors):
+        wrapped = wrapped.replace(f'\x00{index}\x00', anchor)
+    return wrapped
 
 
 def create_epoch_seconds_timestamp(iso_timestamp: str | None = None, days_ahead: int | None = None, offset: int | float = 0) -> int:

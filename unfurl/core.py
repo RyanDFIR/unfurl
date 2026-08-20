@@ -137,6 +137,9 @@ class Unfurl:
         self.api_keys = {}
         self.known_domain_lists = None
         self.node_limit = 500
+        # How many times one (data_type, value) may appear along a single line of
+        # ancestry before Unfurl stops expanding it. See find_repeated_ancestor().
+        self.max_repeated_ancestors = 2
         self.stash = {}
 
         config = load_config()
@@ -281,6 +284,51 @@ class Unfurl:
             Unfurl.get_predecessor_chain(self, predecessor[0], chain)
 
         return chain
+
+    def find_repeated_ancestor(self, data_type, value, parent_id):
+        """Return the ancestor that pushes this value over the repeat limit, or None.
+
+        Unfurl's parsers can feed each other in a loop. A 1drv.ms link expands to an
+        onedrive.live.com redirect whose "redeem" parameter is base64 of the *original*
+        1drv.ms URL, so decoding it hands the shortlink parser the same link again.
+        Nothing in the queue noticed, so a single input filled the graph with identical
+        branches until it hit node_limit -- and every lap fired another HTTP request at
+        the shortener.
+
+        Two choices here are deliberate:
+
+        Compared against ancestors, not against every node. The same value legitimately
+        appears in sibling branches -- a path with two "file" segments, a parameter
+        repeated across two URLs -- and those are separate, real observations. Only a
+        value repeating along one line of ancestry means the parsers are going in
+        circles.
+
+        Allows a repeat before stopping (max_repeated_ancestors). Stopping at the very
+        first repeat would misfire on genuine redirect chains that keep a path while
+        changing the query, e.g. /x?a=1 -> /x?a=2 -> /x?a=3, where url.path repeats but
+        each hop is real evidence. Requiring the value to come around twice keeps those
+        intact while still bounding a true loop to a couple of laps.
+        """
+
+        if parent_id is None:
+            return None
+
+        # A node can be attached to more than one parent; any of their lines counts.
+        parent_ids = parent_id if isinstance(parent_id, list) else [parent_id]
+
+        seen = 0
+        for single_parent_id in parent_ids:
+            parent = self.nodes.get(single_parent_id)
+            if not parent:
+                continue
+
+            for ancestor in [parent] + self.get_predecessor_chain(parent):
+                if ancestor.data_type == data_type and ancestor.value == value:
+                    seen += 1
+                    if seen >= self.max_repeated_ancestors:
+                        return ancestor
+
+        return None
 
     @staticmethod
     def check_if_in_node_chain(chain: list, key, value, chain_index: int) -> bool:
@@ -487,12 +535,36 @@ class Unfurl:
 
     def parse(self, queued_item):
         item = queued_item
+
+        repeated_ancestor = self.find_repeated_ancestor(
+            item['data_type'], item['value'], item.get('parent_id'))
+
+        hover = utils.wrap_hover_text(item['hover'])
+        if repeated_ancestor:
+            # The node is still created. It is a real observation -- the value genuinely
+            # came around again -- and silently dropping it would hide the loop instead
+            # of showing it. What stops is the parsing below, and the hover says so, so
+            # the missing children read as Unfurl's decision rather than as the data
+            # simply ending here.
+            cycle_hover = utils.wrap_hover_text(
+                f'Unfurl stopped expanding here. This same value already appears '
+                f'{self.max_repeated_ancestors} times above this node in the graph '
+                f'(most recently at node {repeated_ancestor.node_id}), which means the '
+                f'parsers are looping. The node is kept, but it was not parsed further.')
+            hover = f'{hover}<br><br>{cycle_hover}' if hover else cycle_hover
+
         node_id = self.create_node(
             data_type=item['data_type'], key=item['key'], value=item['value'],
-            label=item['label'], hover=utils.wrap_hover_text(item['hover']),
+            label=item['label'], hover=hover,
             parent_id=item.get('parent_id', None),
             incoming_edge_config=item.get('incoming_edge_config', None),
             extra_options=item.get('extra_options', None))
+
+        if repeated_ancestor:
+            log.info(
+                f'Not parsing node {node_id}; its value repeats ancestor '
+                f'{repeated_ancestor.node_id} ({item["data_type"]})')
+            return
 
         self.run_plugins(self.nodes[node_id])
 
