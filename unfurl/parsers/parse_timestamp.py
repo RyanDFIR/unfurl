@@ -385,6 +385,32 @@ def decode_epoch_hex(seconds):
     }
 
 
+def decode_epoch_hex_milliseconds(milliseconds):
+    """Decode a hex string (big endian) of an Epoch milliseconds integer to a timestamp.
+
+    An Epoch milliseconds timestamp is an integer counting milliseconds since Jan 1 1970;
+    written in hex it is 11 digits for current dates. Gmail IDs embed one this way: the
+    upper 44 bits of the 64-bit ID are the message's arrival time, so dropping the last 5
+    hex digits of the ID leaves the timestamp in hex.
+
+    Useful values for ranges (all Jan-1 00:00:00):
+      2015: 14B1CB5D000
+      2025: 193B0DAF000
+      2030: 1B885BE1000
+
+    This is reached only when a parser types a node "epoch-hex-milliseconds" explicitly;
+    it is deliberately not part of the hex auto-detection below, where an 11-hex-digit
+    value is too weak a signal to guess from.
+    """
+    timestamp = decode_epoch_milliseconds(int(milliseconds, 16))
+
+    return {
+        'data_type': 'timestamp.epoch-milliseconds-hex',
+        'display_type': 'Epoch milliseconds (hex)',
+        'timestamp_value': timestamp['timestamp_value']
+    }
+
+
 def decode_windows_filetime_hex(intervals):
     """Decode a hex timestamp in Windows FileTime format to a human-readable timestamp.
 
@@ -457,6 +483,9 @@ def run(unfurl, node):
 
     elif node.data_type == 'epoch-hex-seconds':
         new_timestamp = decode_epoch_hex(node.value)
+
+    elif node.data_type == 'epoch-hex-milliseconds':
+        new_timestamp = decode_epoch_hex_milliseconds(node.value)
 
     # Otherwise, examine the value of the node and see if we can detect a reasonable timestamp
     else:

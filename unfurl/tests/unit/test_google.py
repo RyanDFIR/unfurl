@@ -1,6 +1,17 @@
 from unfurl.core import Unfurl
 from urllib.parse import urlparse
+import re
 import unittest
+
+
+def hover_text(node):
+    """A node's hover with markup removed and whitespace collapsed.
+
+    Hover text is wrapped for display, which inserts <br> at positions that depend on the
+    exact wording. Matching against the raw value makes an assertion pass or fail on where
+    a line break happened to land, so match against what the reader actually sees.
+    """
+    return ' '.join(re.sub(r'<[^>]+>', ' ', node.hover or '').split())
 
 
 def get_nodes_by_type(unfurl_instance, data_type):
@@ -135,7 +146,7 @@ class TestGoogle(unittest.TestCase):
         # confirm q has the redirect hover text
         q_node = next(n for n in test.nodes.values()
                       if n.data_type == 'url.query.pair' and n.key == 'q')
-        self.assertIn('redirect target', q_node.hover.lower())
+        self.assertIn('redirect target', hover_text(q_node).lower())
 
         # confirm the destination URL is parsed
         dest_urls = [
@@ -148,12 +159,12 @@ class TestGoogle(unittest.TestCase):
         # confirm sa has hover text
         sa_node = next(n for n in test.nodes.values()
                        if n.data_type == 'url.query.pair' and n.key == 'sa')
-        self.assertIn('action type', sa_node.hover.lower())
+        self.assertIn('action type', hover_text(sa_node).lower())
 
         # confirm usg has hover text
         usg_node = next(n for n in test.nodes.values()
                         if n.data_type == 'url.query.pair' and n.key == 'usg')
-        self.assertIn('signature', usg_node.hover.lower())
+        self.assertIn('signature', hover_text(usg_node).lower())
 
 
     def test_google_aclk_ad_click(self):
@@ -191,19 +202,64 @@ class TestGoogle(unittest.TestCase):
         ai_node = next(n for n in test.nodes.values()
                        if n.data_type == 'url.query.pair' and n.key == 'ai')
         self.assertIsNotNone(ai_node.hover)
-        self.assertIn('ad', ai_node.hover.lower())
+        self.assertIn('ad', hover_text(ai_node).lower())
 
         # sig should have hover text about signature
         sig_node = next(n for n in test.nodes.values()
                         if n.data_type == 'url.query.pair' and n.key == 'sig')
         self.assertIsNotNone(sig_node.hover)
-        self.assertIn('signature', sig_node.hover.lower())
+        self.assertIn('signature', hover_text(sig_node).lower())
 
         # gclid should have hover text
         gclid_node = next(n for n in test.nodes.values()
                           if n.data_type == 'url.query.pair' and n.key == 'gclid')
         self.assertIsNotNone(gclid_node.hover)
-        self.assertIn('click', gclid_node.hover.lower())
+        self.assertIn('click', hover_text(gclid_node).lower())
+
+
+class TestGoogleAccountParams(unittest.TestCase):
+    """Params seen on Google sign-in and multi-account URLs."""
+
+    def parse(self, url):
+        test = Unfurl()
+        test.add_to_queue(data_type='url', key=None, value=url)
+        test.parse_queue()
+        return test
+
+    def test_dsh_timestamp(self):
+        """The second field of "dsh" dates the sign-in flow itself."""
+        test = self.parse(
+            'https://accounts.google.com/v3/signin/identifier?dsh=S2034035022%3A1749584429440685')
+
+        raw = get_nodes_by_type(test, 'epoch-microseconds')
+        self.assertEqual(1, len(raw))
+        self.assertEqual(1749584429440685, raw[0].value)
+
+        parsed = get_nodes_by_type(test, 'timestamp.epoch-microseconds')
+        self.assertEqual(1, len(parsed))
+        self.assertEqual('2025-06-10 19:40:29.440685+00:00', parsed[0].value)
+
+    def test_dsh_first_field_may_be_negative(self):
+        test = self.parse(
+            'https://accounts.google.com/v3/signin/challenge/pwd?dsh=S-905808778%3A1750788381554893')
+
+        parsed = get_nodes_by_type(test, 'timestamp.epoch-microseconds')
+        self.assertEqual(1, len(parsed))
+        self.assertEqual('2025-06-24 18:06:21.554893+00:00', parsed[0].value)
+
+    def test_malformed_dsh_yields_no_timestamp(self):
+        test = self.parse('https://accounts.google.com/v3/signin/identifier?dsh=nonsense')
+        self.assertEqual([], get_nodes_by_type(test, 'epoch-microseconds'))
+
+    def test_authuser_zero_is_the_default_account(self):
+        test = self.parse('https://www.google.com/search?q=dfir&authuser=0')
+        labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
+        self.assertIn('Google account index 0 (default account)', labels)
+
+    def test_authuser_above_zero_indicates_multiple_accounts(self):
+        test = self.parse('https://www.google.com/search?q=dfir&authuser=1')
+        labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
+        self.assertIn('Google account index 1 (an additional signed-in account)', labels)
 
 
 if __name__ == '__main__':

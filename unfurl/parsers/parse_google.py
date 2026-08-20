@@ -278,6 +278,40 @@ def run(unfurl, node):
                         data_type='google.aqs', key=key, value=value,
                         parent_id=node.node_id, incoming_edge_config=google_edge)
 
+        elif node.key == 'authuser':
+            # Seen across Google properties; identifies which of the browser profile's
+            # signed-in accounts the request is for, by the order they were added.
+            position = str(node.value)
+            if position.isdigit():
+                index = int(position)
+                qualifier = 'default account' if index == 0 else 'an additional signed-in account'
+                label = f'Google account index {index} ({qualifier})'
+                hover = ('Google\'s "authuser" selects between accounts signed in to the same '
+                         'browser profile, numbered from 0 in the order they were added. A '
+                         'value above 0 means more than one account was signed in.')
+            else:
+                # Some flows use the account's email address rather than an index.
+                label = f'Account: {node.value}'
+                hover = ('Google\'s "authuser" selects between accounts signed in to the same '
+                         'browser profile; here it names the account directly.')
+            unfurl.add_to_queue(
+                data_type='descriptor', key=None, value=None, label=label, hover=hover,
+                parent_id=node.node_id, incoming_edge_config=google_edge)
+
+        elif node.key == 'dsh':
+            # Ex: dsh=S2034035022:1749584429440685 (sign-in flows on accounts.google.com).
+            # The second field is the time the flow started, in epoch microseconds.
+            dsh_match = re.fullmatch(r'S?(-?\d+):(\d{13,19})', str(node.value))
+            if dsh_match:
+                dsh_timestamp = int(dsh_match.group(2))
+                unfurl.add_to_queue(
+                    data_type='epoch-microseconds', key=None, value=dsh_timestamp,
+                    label=f'dsh Timestamp: {dsh_timestamp}',
+                    hover='Google sign-in URLs carry a "dsh" value whose second field is the '
+                          'time the sign-in flow was started, as epoch microseconds. This dates '
+                          'the sign-in attempt itself, not the account or the page content.',
+                    parent_id=node.node_id, incoming_edge_config=google_edge)
+
         elif node.key == 'ei':
             decoded_ei = utils.try_urlsafe_b64_decode(node.value, min_length=8)
             if decoded_ei is None:
