@@ -56,7 +56,7 @@ def run(unfurl, node):
                 value = imgc_mappings.get(node.value, 'Unknown')
                 unfurl.add_to_queue(
                     data_type='descriptor', key=None, value=f'Image Size: {value}',
-                    hover='Yahoo Image Search Size', parent_id=node.node_id, incoming_edge_config=yahoo)                    
+                    hover='Yahoo Image Search Size', parent_id=node.node_id, incoming_edge_config=yahoo)
 
             elif node.key == 'imgsz':
                 imgsz_mappings = {
@@ -68,7 +68,7 @@ def run(unfurl, node):
                 unfurl.add_to_queue(
                     data_type='descriptor', key=None, value=f'Image Size: {value}',
                     hover='Yahoo Image Search Size', parent_id=node.node_id, incoming_edge_config=yahoo)
-                    
+
             elif node.key == 'imgty':
                 imgty_mappings = {
                     'clipart': 'Clipart',
@@ -83,8 +83,8 @@ def run(unfurl, node):
                 value = imgty_mappings.get(node.value, 'Unknown')
                 unfurl.add_to_queue(
                     data_type='descriptor', key=None, value=f'Image Type: {value}',
-                    hover='Yahoo Image Search Type', parent_id=node.node_id, incoming_edge_config=yahoo)       
-                    
+                    hover='Yahoo Image Search Type', parent_id=node.node_id, incoming_edge_config=yahoo)
+
             elif node.key == 'p':
                 unfurl.add_to_queue(
                     data_type='descriptor', key=None, value=f'Search Query: {node.value}',

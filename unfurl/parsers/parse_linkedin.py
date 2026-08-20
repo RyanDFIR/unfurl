@@ -106,7 +106,7 @@ def run(unfurl, node):
 
         # LinkedIn IDs (19-digit numbers that contain an embedded timestamp) can appear in other places;
         # this is a more generic search for them. One common example is in the URLs of posts:
-        # Ex: https://www.linkedin.com/posts/ryanabenson_more-search-url-parsing-misp-lists-more-activity-6904926959046938624-B2Ma
+        # Ex: https://www.linkedin.com/posts/ryanabenson_more-search-url-parsing-misp-lists-more-activity-6904926959046938624-B2Ma  # noqa: E501
         elif node.data_type in ('url.path.segment', 'url.query.pair'):
             linkedin_post_id_re = re.compile(r'(\d{19})')
             m = re.search(linkedin_post_id_re, node.value)

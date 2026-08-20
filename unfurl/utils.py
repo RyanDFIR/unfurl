@@ -190,7 +190,9 @@ def wrap_hover_text(hover_text: Union[str, None]) -> Union[str, None]:
     return wrapped
 
 
-def create_epoch_seconds_timestamp(iso_timestamp: str | None = None, days_ahead: int | None = None, offset: int | float = 0) -> int:
+def create_epoch_seconds_timestamp(
+        iso_timestamp: str | None = None, days_ahead: int | None = None,
+        offset: int | float = 0) -> int:
     """
     Create a timestamp (number of seconds since Unix epoch) from either an ISO 8601-formatted timestamp string or for
     some number of days in the future. Optionally, an offset (in seconds) can be provided that will be subtracted
@@ -240,6 +242,7 @@ def extract_bits(identifier: int, start: int, end: int) -> int:
     mask = (1 << (end - start)) - 1
     return shifted & mask
 
+
 def set_bits(value: int, offset: int, max_size=None) -> int:
     return int(value << offset)
 
@@ -264,4 +267,3 @@ def safe_decompress(data: bytes, max_size: int = MAX_DECOMPRESSED_SIZE) -> bytes
     if decompressor.unconsumed_tail:
         raise ValueError("Decompressed data exceeds size limit")
     return result
-

@@ -60,6 +60,7 @@ xt_hash_types = {
            '<br>Supported by G2 (Gnutella2), such hashes are vulnerable to hash collision attacks.',
 }
 
+
 def check_tracker_statuses(magnet_url):
     try:
         r = requests.get('https://checker.openwebtorrent.com/check', params={'magnet': magnet_url},
@@ -78,6 +79,7 @@ def check_tracker_statuses(magnet_url):
         return statuses
     else:
         return {}
+
 
 def run(unfurl, node):
     if node.data_type == 'magnet.tr.list':

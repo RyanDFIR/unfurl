@@ -1,0 +1,10 @@
+[flake8]
+# Adds to flake8's built-in exclude list rather than replacing it.
+extend-exclude =
+    # protoc output - not ours to format
+    *_pb2.py
+    # local virtualenvs and build artifacts, so a local run matches CI
+    .venv*
+    venv
+    build
+    dist

@@ -266,7 +266,7 @@ def parse_mastodon_snowflake(unfurl, node):
     try:
         snowflake = int(node.value)
         seq_data = snowflake & 0xFF
-        timestamp = (snowflake >> 16) 
+        timestamp = (snowflake >> 16)
 
     except Exception as e:
         print(e)

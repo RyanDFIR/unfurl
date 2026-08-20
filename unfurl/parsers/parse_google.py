@@ -14,9 +14,7 @@
 
 import datetime
 
-import json
 import pycountry
-import zlib
 import struct
 import re
 from unfurl import utils
@@ -201,6 +199,7 @@ def parse_rlz(rlz_string):
                  'Week is measured as number of weeks since Feb 3, 2003.'}
 
     return rlz
+
 
 def run(unfurl, node):
     if node.data_type == 'url.query.pair' and unfurl.preceding_domain_contains(node, 'google'):

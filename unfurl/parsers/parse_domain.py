@@ -79,7 +79,7 @@ def run(unfurl, node):
             data_type='url.domain', key='Domain Name', value=domain,
             hover='This is the base, registrable, part of the domain or netloc',
             parent_id=node.node_id, incoming_edge_config=urlparse_edge)
-        
+
     tld = psl.get_tld(full_domain)
     if tld is not None:
         unfurl.add_to_queue(

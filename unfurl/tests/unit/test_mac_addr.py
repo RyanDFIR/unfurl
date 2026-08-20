@@ -27,7 +27,6 @@ class TestMacAddr(unittest.TestCase):
         self.assertEqual(1, len(vendor_nodes))
         self.assertIn('Dell', vendor_nodes[0].label)
 
-
     def test_mac_addr_bare(self):
         """ Test a bare MAC address (no delimiters)"""
 
@@ -46,7 +45,6 @@ class TestMacAddr(unittest.TestCase):
         vendor_nodes = get_nodes_by_type(test, 'mac-address.vendor')
         self.assertEqual(1, len(vendor_nodes))
         self.assertIn('Dell', vendor_nodes[0].label)
-
 
     def test_mac_addr_dashes(self):
         """ Test a MAC address with dashes"""

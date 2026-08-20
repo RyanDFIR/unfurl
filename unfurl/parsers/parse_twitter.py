@@ -104,6 +104,7 @@ def parse_twitter_snowflake(unfurl, node, encoding_type='integer', on_twitter=Tr
         hover='For every ID that is generated, this number is incremented and rolls over every 4096',
         parent_id=node.node_id, incoming_edge_config=twitter_snowflake_edge)
 
+
 def create_twitter_id(timestamp=None, days_ahead=None, sequence=1, machine_id=1):
     id_timestamp = utils.create_epoch_seconds_timestamp(iso_timestamp=timestamp, days_ahead=days_ahead, offset=1288834974.657)
 
@@ -113,6 +114,7 @@ def create_twitter_id(timestamp=None, days_ahead=None, sequence=1, machine_id=1)
     sequence_bits = utils.set_bits(sequence, 0)
 
     return int(timestamp_bits + machine_id_bits + sequence_bits)
+
 
 def run(unfurl, node):
     preceding_domain = unfurl.find_preceding_domain(node)

@@ -25,6 +25,7 @@ discord_edge = {
     'label': '❄'
 }
 
+
 def create_discord_id(timestamp=None, days_ahead=None, worker_id=0, process_id=0, increment=0):
     id_timestamp = utils.create_epoch_seconds_timestamp(
         iso_timestamp=timestamp, days_ahead=days_ahead, offset=1420070400)

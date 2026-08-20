@@ -99,7 +99,6 @@ class TestBase32(unittest.TestCase):
         self.assertNotIn('b64', labels)
         self.assertIn('unfurltest', [n.value for n in test.nodes.values()])
 
-
     def test_explicit_base32_decodes_short_value(self):
         """ A node explicitly labelled 'base32' decodes even when below the
         auto-detect minimum length (heuristics are bypassed)."""

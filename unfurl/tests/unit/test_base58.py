@@ -57,7 +57,6 @@ class TestBase58(unittest.TestCase):
 
         self.assertNotIn('b58', _edge_labels(test))
 
-
     def test_explicit_base58_decodes_short_value(self):
         """ A node explicitly labelled 'base58' decodes even when below the
         auto-detect minimum length (heuristics are bypassed)."""

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime
 from unfurl import utils
 
 import logging
@@ -47,7 +46,7 @@ def parse_tiktok_id(unfurl, node, on_tiktok=True):
 """
     try:
         tiktok_id = int(node.value)
-    except ValueError as e:
+    except ValueError:
         # Valid TikTok IDs should be ints, so this wasn't one
         return
 
@@ -111,6 +110,7 @@ def create_tiktok_id(timestamp=None, days_ahead=None, sequence=1, machine_id=1, 
     entity_type_bits = utils.set_bits(entity_id, 8)
 
     return int(timestamp_bits + sequence_bits + machine_id_bits + entity_type_bits)
+
 
 def run(unfurl, node):
     min_reasonable_id = create_tiktok_id('2017-12-01T00:00:00')
