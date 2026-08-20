@@ -1,4 +1,5 @@
 from unfurl.core import Unfurl
+from unfurl.parsers import parse_url
 import unittest
 
 
@@ -45,7 +46,6 @@ class TestUrl(unittest.TestCase):
 
         # confirm the scheme is parsed
         self.assertIn('File Extension: .png', test.nodes[13].label)
-
 
     def test_single_path_segment(self):
         """Test that a path with only one segment is still split into a segment node.
@@ -199,6 +199,73 @@ class TestUrl(unittest.TestCase):
         self.assertIn('theater', query_pairs)
         self.assertEqual('3', query_pairs['type'])
         self.assertEqual('', query_pairs['theater'])
+
+
+class TestUrlUnquoting(unittest.TestCase):
+    """"+" means a space in a query string and a literal plus everywhere else.
+
+    parse_url's final branch is a catch-all that runs on any node holding a string,
+    including data types other parsers invent, so decoding "+" as a space there
+    corrupted values it had no business touching.
+    """
+
+    class FakeNode:
+        node_id = 1
+
+        def __init__(self, value):
+            self.value = value
+
+    def unquote(self, value, plus_is_space=False):
+        """Return the values try_url_unquote would emit for `value`."""
+        test = Unfurl()
+        changed = parse_url.try_url_unquote(
+            test, self.FakeNode(value), plus_is_space=plus_is_space)
+        emitted = [item['value'] for item in list(test.queue.queue)]
+        return changed, emitted
+
+    def test_literal_plus_is_left_alone(self):
+        """A Gmail compose payload separates its IDs with "+"; they are not spaces."""
+        changed, emitted = self.unquote('a:r-21+msg-a:r-45')
+        self.assertFalse(changed)
+        self.assertEqual(emitted, [])
+
+    def test_plus_becomes_a_space_when_asked(self):
+        changed, emitted = self.unquote('dfir+data', plus_is_space=True)
+        self.assertTrue(changed)
+        self.assertEqual(emitted, ['dfir data'])
+
+    def test_percent_escapes_still_decode(self):
+        """Turning off the "+" behaviour must not stop ordinary unquoting."""
+        changed, emitted = self.unquote('a%20b')
+        self.assertTrue(changed)
+        self.assertEqual(emitted, ['a b'])
+
+    def test_utc_offset_is_not_unquoted(self):
+        changed, emitted = self.unquote('2020-06-25 21:54:34.675+00:00')
+        self.assertFalse(changed)
+        self.assertEqual(emitted, [])
+
+    def test_gmail_payload_survives_a_full_parse(self):
+        """End to end: the decoded payload node keeps its "+" separators."""
+        test = Unfurl()
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://mail.google.com/mail/u/0/#inbox?compose='
+                  'GTvVlcSKjDPsKDHWvqZCTKmmgKbhqgbxKlfhjNjPKtqMrDXmxjvJDlprDkjgXFpGnCmFpRcRHHcQf')
+        test.parse_queue()
+
+        payloads = [n.value for n in test.nodes.values()
+                    if n.data_type == 'gmail.token.payload']
+        self.assertEqual(payloads, ['a:r-7217035772637032756+msg-a:r-8051540162134737577'])
+
+        # Corruption would look like both IDs in one node joined by a space instead of
+        # a "+". The individual gmail.id nodes legitimately contain neither.
+        corrupted = [n.value for n in test.nodes.values()
+                     if isinstance(n.value, str)
+                     and 'r-7217035772637032756' in n.value
+                     and 'r-8051540162134737577' in n.value
+                     and '+' not in n.value]
+        self.assertEqual(corrupted, [])
 
 
 if __name__ == '__main__':
