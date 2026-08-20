@@ -14,9 +14,7 @@
 
 import datetime
 
-import json
 import pycountry
-import zlib
 import struct
 import re
 from unfurl import utils

@@ -59,7 +59,7 @@ def virustotal_lookup(unfurl, hash_value):
         try:
             result = response.json()
             return result['data']['attributes']
-        except:
+        except (ValueError, KeyError, TypeError):
             return False
 
 

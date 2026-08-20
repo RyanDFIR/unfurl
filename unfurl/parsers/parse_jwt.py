@@ -160,7 +160,7 @@ def run(unfurl, node):
 
         return
 
-    if type(node.value) != str:
+    if not isinstance(node.value, str):
         return
 
     jwt_re = re.compile(r'^(?P<jwt_header_enc>[A-Za-z0-9_\-]{8,})\.'

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime
 from unfurl import utils
 
 import logging
@@ -47,7 +46,7 @@ def parse_tiktok_id(unfurl, node, on_tiktok=True):
 """
     try:
         tiktok_id = int(node.value)
-    except ValueError as e:
+    except ValueError:
         # Valid TikTok IDs should be ints, so this wasn't one
         return
 
