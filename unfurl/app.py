@@ -19,7 +19,7 @@ from flask import Flask, render_template, request, redirect, url_for
 from flask_cors import CORS
 from flask_restx import Api, Namespace, Resource
 from urllib.parse import unquote
-from unfurl.core import load_config, resolve_remote_lookups, run
+from unfurl.core import load_config, preload_reference_data, resolve_remote_lookups, run
 
 unfurl_app_host = None
 unfurl_app_port = None
@@ -106,6 +106,10 @@ def web_app(host='localhost', port='5000', debug='True', remote_lookups=None):
         host = config['UNFURL_APP'].get('host', host)
         port = config['UNFURL_APP'].get('port', port)
         debug = config['UNFURL_APP'].getboolean('debug', debug)
+
+    # Parse the bundled reference data now rather than during the first request. On a
+    # scale-to-zero host the first request is a real person waiting on a cold start.
+    preload_reference_data()
 
     UnfurlApp(
         unfurl_debug=debug,
