@@ -21,6 +21,93 @@ from bs4 import BeautifulSoup
 log = logging.getLogger(__name__)
 
 
+# Shorteners expanded by requesting https://{domain}/{code} and reading the Location
+# header, listed by name because nothing else will find them.
+#
+# Every domain here is popular enough to appear in a top-sites list, which means the
+# length guess at the end of run() deliberately skips it, and none of them are in MISP's
+# shortener list. Without this table they would silently stop being expanded -- which is
+# exactly what happened when the popularity check was first added, and is why the list
+# was audited into existence rather than guessed at.
+#
+# Verified 2026-08-20 against the top-sites union and the MISP list. When adding one,
+# check both: if MISP already has it, it does not belong here.
+additional_shortener_domains = frozenset({
+    '0rz.tw',      # Taiwanese public shortener
+    'aka.ms',      # Microsoft
+    'amzn.eu',     # Amazon (EU counterpart to amzn.to)
+    'arcg.is',     # Esri ArcGIS
+    'bbc.in',      # BBC
+    'chng.it',     # Change.org
+    'cnn.io',      # CNN
+    'dai.ly',      # Dailymotion
+    'dwz.cn',      # Baidu
+    'ffm.to',      # FeatureFM smart links
+    'flic.kr',     # Flickr
+    'g.page',      # Google Business Profile
+    'geni.us',     # GeniusLink
+    'gg.gg',       # public shortener
+    'href.li',     # referrer-stripping redirector
+    'hubs.ly',     # HubSpot
+    'icio.us',     # del.icio.us
+    'igg.me',      # Indiegogo
+    'kck.st',      # Kickstarter
+    'lin.ee',      # LINE
+    'lnk.to',      # music smart links
+    'lnks.gd',     # GovDelivery
+    'm.me',        # Messenger; resolves a vanity name to the numeric page ID
+    'on.aws',      # Amazon Web Services
+    'ouo.io',      # ad-gated public shortener
+    'pca.st',      # Pocket Casts
+    'pin.it',      # Pinterest
+    'prf.hn',      # Partnerize affiliate redirector
+    'pxf.io',      # Impact affiliate redirector
+    'rdcu.be',     # Springer Nature SharedIt
+    'redd.it',     # Reddit
+    'sjv.io',      # Sovrn affiliate redirector
+    't.cn',        # Sina Weibo
+    'tidd.ly',     # Awin affiliate redirector
+    'tru.am',      # TrueAnthem
+    'url.cn',      # Tencent / QQ
+    'vk.cc',       # VK
+    'wa.link',     # WhatsApp; resolves to api.whatsapp.com with the phone number
+    'wapo.st',     # Washington Post
+    'we.tl',       # WeTransfer
+})
+
+
+# Short domains checked and deliberately left out, so the question is not reopened from
+# scratch. Behavior verified 2026-08-20 by requesting real captured URLs.
+#
+# Redirect, but reveal nothing:
+#   line.me   deep links (/R/@handle, /R/app/...) 302 to "/" -- the site root
+#   zalo.me   301 to the same path with a trailing slash; pure canonicalization
+#   lu.ma     301 to luma.com with the path preserved; a domain rebrand, not a lookup
+#   solo.to   200; a link-in-bio page, not a redirect at all
+#
+# Not a redirector at all:
+#   trkn.us   carries its destination in the path as plaintext
+#             (/click/process/partner=...;redirect=https://example.com). Nothing needs
+#             fetching; this wants a parser, not an expander, and would be better for it
+#             -- no request means nothing is tipped off and dead links still resolve.
+
+
+# Redirectors whose token lives in the query string. These get the full URL passed
+# through untouched, via expand_full_url_via_redirect_header(); the generic expander
+# rebuilds the URL from the domain and path, dropping the token, and the tokenless URL
+# answers 200 -- so it expands to nothing at all.
+#
+# Deliberately a short, evidenced list rather than a guess. Requesting one of these sends
+# the tracking token back to its issuer, which for a per-recipient email token is a
+# signal that the recipient engaged with the message -- during a phishing investigation
+# that tells the sender their target clicked. Only add a domain after confirming both
+# that it needs the full URL and that expanding it is worth that cost.
+query_token_redirectors = {
+    # Verified 2026-08-20: r20.rs6.net/tn.jsp?f=<token> -> files.constantcontact.com/...
+    'rs6.net': 'Constant Contact',
+}
+
+
 shortlink_edge = {
     'color': {
         'color': '#E7572C'
@@ -94,13 +181,51 @@ def expand_vdg_url(shortcode):
     return {}
 
 
-def expand_url_via_redirect_header(base_url, shortcode):
-    r = requests.get(f'{base_url}{shortcode.rstrip("/")}', allow_redirects=False, timeout=3)
+REDIRECT_STATUS_CODES = (301, 302, 303, 307, 308)
 
-    if r.status_code in [301, 302, 303, 307, 308]:
+
+def _location_header_from(url):
+    """GET `url` without following redirects and return its Location header, or {}."""
+
+    r = requests.get(url, allow_redirects=False, timeout=3)
+
+    if r.status_code in REDIRECT_STATUS_CODES:
         return r.headers['Location']
     else:
         return {}
+
+
+def expand_url_via_redirect_header(base_url, shortcode):
+    """Expand a path-based short link, rebuilding the URL from a domain and a code.
+
+    The generic, last-ditch expander: it assumes the whole link is
+    {registered domain} + {path}, which is true of nearly every URL shortener and is
+    what lets Unfurl guess about domains it has never seen.
+
+    Use expand_full_url_via_redirect_header() when that assumption does not hold.
+    """
+
+    return _location_header_from(f'{base_url}{shortcode.rstrip("/")}')
+
+
+def expand_full_url_via_redirect_header(url):
+    """Expand a redirector by requesting the URL exactly as it was given.
+
+    Some redirectors keep their token in the query string -- Constant Contact's is
+    r20.rs6.net/tn.jsp?f=<token>. The generic expander rebuilds a URL from the domain and
+    path, which drops the query, and a tokenless r20.rs6.net/tn.jsp answers 200: no
+    Location header, so nothing is expanded and the analyst is told nothing. (A URL whose
+    token has been truncated in transit does 302, to r20.rs6.net/error.jsp -- which would
+    be reported as the destination.) Either way the token has to survive, so these need
+    the original URL passed through untouched.
+
+    Only for domains known to work this way. Sending a full URL somewhere is not
+    something to do on a guess: the query string is exactly where per-recipient tracking
+    tokens live, so the request can tell the sender their target engaged with the
+    message. See the note on query_token_redirectors.
+    """
+
+    return _location_header_from(url)
 
 
 def run(unfurl, node):
@@ -192,13 +317,20 @@ def run(unfurl, node):
 
         return
 
+    # Known shorteners handled by name. Anything listed here is expanded regardless of
+    # how popular the domain is, which matters for a.co, g.co and 1drv.ms: all three are
+    # real shorteners that also sit in top-sites lists, so the length heuristic below
+    # would skip them. Naming them is better than widening the guess.
     redirect_expands = [
+        {'domain': '1drv.ms', 'base_url': 'https://1drv.ms/'},
+        {'domain': 'a.co', 'base_url': 'https://a.co/'},
         {'domain': 'bit.do', 'base_url': 'https://bit.do/'},
         {'domain': 'buff.ly', 'base_url': 'https://buff.ly/'},
         {'domain': 'cutt.ly', 'base_url': 'https://cutt.ly/'},
         {'domain': 'db.tt', 'base_url': 'https://db.tt/'},
         {'domain': 'dlvr.it', 'base_url': 'https://dlvr.it/'},
         {'domain': 'fb.me', 'base_url': 'https://fb.me/'},
+        {'domain': 'g.co', 'base_url': 'https://g.co/'},
         {'domain': 'flip.it', 'base_url': 'https://flip.it/'},
         {'domain': 'goo.gl', 'base_url': 'https://goo.gl/'},
         {'domain': 'ift.tt', 'base_url': 'https://ift.tt/'},
@@ -232,9 +364,31 @@ def run(unfurl, node):
                     parent_id=node.node_id, incoming_edge_config=shortlink_edge)
             return
 
-    # Guess that any domain + tld that is less than eight characters is a link shortener, and try to
-    # expand it via a 301/302 Location header.
-    if preceding_domain and len(preceding_domain) < 8:
+    # Matched with preceding_domain_matches() rather than a dict lookup: these are served
+    # from a subdomain (r20.rs6.net), and find_preceding_domain returns the full hostname.
+    redirector = next(
+        (domain for domain in query_token_redirectors
+         if unfurl.preceding_domain_matches(node, domain)), None)
+
+    if redirector:
+        service = query_token_redirectors[redirector]
+        full_url = unfurl.find_preceding_url(node)
+
+        if full_url:
+            expanded_url = expand_full_url_via_redirect_header(full_url)
+            if expanded_url:
+                unfurl.add_to_queue(
+                    data_type='url', key=None, value=expanded_url,
+                    label=f'Expanded URL: {expanded_url}',
+                    hover=f'Expanded URL, retrieved from {redirector} '
+                          f'({service}) via "Location" header.<br><br>This is a click '
+                          f'tracker: the token is unique to one recipient, so requesting '
+                          f'it may have registered a click and told the sender their '
+                          f'target engaged with the message.',
+                    parent_id=node.node_id, incoming_edge_config=shortlink_edge)
+        return
+
+    if preceding_domain in additional_shortener_domains:
         expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
@@ -247,8 +401,36 @@ def run(unfurl, node):
     # Get the list of "known" URL shortener domains from MISP; many of these seem to be deprecated.
     # Try to expand the shortlink via a 301/302 Location header; if the site uses something like a meta refresh,
     # this won't work.
+    #
+    # Checked before the length heuristic below. It used to come after, and the heuristic
+    # returned unconditionally, so this list -- the authoritative one -- was unreachable
+    # for every domain shorter than eight characters, which is most shorteners.
     misp_shortener_domains = unfurl.known_domain_lists['List of known URL Shorteners domains'].list
     if preceding_domain in misp_shortener_domains:
+        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
+        if expanded_url:
+            unfurl.add_to_queue(
+                data_type='url', key=None, value=expanded_url,
+                label=f'Expanded URL: {expanded_url}',
+                hover=f'Expanded URL, retrieved from {preceding_domain} via "Location" header',
+                parent_id=node.node_id, incoming_edge_config=shortlink_edge)
+        return
+
+    # Last resort: guess that a very short domain we know nothing else about is a link
+    # shortener, and try to expand it via a 301/302 Location header.
+    #
+    # Length alone is a bad signal -- x.com, box.com, cnn.com, npr.org, ibm.com, ups.com,
+    # vk.com, qq.com, ok.ru, t.me and wa.me are all under eight characters and none of
+    # them are shorteners. Guessing sent a request to each of them, which for a forensics
+    # tool is worse than a wasted round trip: fetching a URL tells that site someone is
+    # looking at it.
+    #
+    # So the guess is now limited to domains that are not in a top-sites list. A domain
+    # popular enough to land in one is a destination people visit; a shortener that
+    # popular (t.co, bit.ly, youtu.be) is already in the MISP list or the table above.
+    # Only the tighter lists count -- see Unfurl.TOP_SITES_LIST_PREFIXES.
+    if preceding_domain and len(preceding_domain) < 8 \
+            and not unfurl.domain_in_top_sites_list(preceding_domain):
         expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(

@@ -55,6 +55,16 @@ def load_config():
     return config
 
 
+# The MISP warninglists are immutable reference data bundled with the package, and
+# parsing them costs about half a second. Loaded once per process; see
+# Unfurl.build_known_domain_lists().
+_known_domain_lists = None
+
+# Union of the top-sites lists, derived from the above and therefore just as immutable.
+# Also process-wide: rebuilding it per instance cost ~1.3 ms of pure waste on every
+# request the web app served. See Unfurl.domain_in_top_sites_list().
+_top_sites_domains = None
+
 REMOTE_LOOKUPS_ENV_VAR = 'UNFURL_REMOTE_LOOKUPS'
 
 # Enabling remote lookups from the environment is worth announcing, but the web app
@@ -124,6 +134,23 @@ def resolve_remote_lookups(explicit=None, config=None):
             return False
 
     return False
+
+
+def preload_reference_data():
+    """Parse and cache the bundled reference data before serving any traffic.
+
+    Building the warninglists takes roughly 0.4s, and the top-sites union another few
+    milliseconds. Both are process-wide caches, so the cost is paid once -- but by
+    default it is paid by whichever request happens to construct the first Unfurl.
+
+    On a scale-to-zero host such as Cloud Run that request is a real person waiting
+    through a cold start. Calling this during startup moves the work to where the
+    platform expects it, and where Cloud Run's startup CPU boost applies.
+
+    Safe to call more than once; subsequent calls are no-ops.
+    """
+
+    Unfurl(remote_lookups=False).domain_in_top_sites_list('example.com')
 
 
 class Unfurl:
@@ -224,19 +251,59 @@ class Unfurl:
             self.stash[key] = self.stash[key] | value
 
     def build_known_domain_lists(self):
-        warning_lists = WarningLists()
-        warning_lists_dict = warning_lists.warninglists
+        """Load the MISP warninglists, reusing the result across instances.
 
-        # This list has some values I think may confuse users (t.co, drive.google.com, etc), as most things on
-        # those domains are not security blog-related, so I'm removing it.
-        warning_lists_dict.pop('List of known security providers/vendors blog domain', 1)
-        warning_lists_dict.pop('OSINT.DigitalSide.IT Warning List', 1)
+        WarningLists() parses ~90 bundled JSON files, some with a million entries, and
+        takes about half a second -- effectively all of the cost of constructing an
+        Unfurl. It was previously rebuilt for every instance, which is invisible for a
+        single CLI run but dominates anything that makes many: the test suite spends
+        minutes on it, and the web app pays it on every request.
 
-        # And the capitalization was bothering me, so fixing it here.
-        warning_lists_dict['List of known google domains'].name = 'List of known Google domains'
-        warning_lists_dict['List of known microsoft domains'].name = 'List of known Microsoft domains'
+        The lists are immutable reference data shipped with the package, so one copy is
+        shared. Instances only read from it.
+        """
 
-        self.known_domain_lists = warning_lists_dict
+        global _known_domain_lists
+
+        if _known_domain_lists is None:
+            warning_lists_dict = WarningLists().warninglists
+
+            # This list has some values I think may confuse users (t.co, drive.google.com, etc), as most things on
+            # those domains are not security blog-related, so I'm removing it.
+            warning_lists_dict.pop('List of known security providers/vendors blog domain', 1)
+            warning_lists_dict.pop('OSINT.DigitalSide.IT Warning List', 1)
+
+            # And the capitalization was bothering me, so fixing it here.
+            warning_lists_dict['List of known google domains'].name = 'List of known Google domains'
+            warning_lists_dict['List of known microsoft domains'].name = 'List of known Microsoft domains'
+
+            _known_domain_lists = warning_lists_dict
+
+        self.known_domain_lists = _known_domain_lists
+
+    # Popularity lists tight enough to mean "this is a destination people visit".
+    # Deliberately excludes the 1M-entry lists: at that depth the list contains most of
+    # the web, including plenty of link shorteners, so membership stops being a signal.
+    TOP_SITES_LIST_PREFIXES = ('Top 1000', 'Top 500 ', 'Top 10 000', 'Top 10K')
+
+    def domain_in_top_sites_list(self, domain):
+        """Whether `domain` is in one of the tighter popularity lists.
+
+        Used to tell a well-known site apart from an unknown link shortener. The union is
+        built once per process and shared: the alternative is scanning every warninglist
+        for every domain, and some of those lists have a million entries.
+        """
+
+        global _top_sites_domains
+
+        if _top_sites_domains is None:
+            combined = set()
+            for known_list in self.known_domain_lists.values():
+                if str(known_list.name).startswith(self.TOP_SITES_LIST_PREFIXES):
+                    combined.update(known_list.list)
+            _top_sites_domains = combined
+
+        return domain in _top_sites_domains
 
     def search_known_domain_lists(self, domain):
         lists_found_in = []
@@ -453,6 +520,31 @@ class Unfurl:
                 result = self.find_preceding_path(parent_node)
                 if result:
                     return result
+
+        return ''
+
+    def find_preceding_url(self, node):
+        """Return the value of the nearest 'url' ancestor, or '' if there isn't one.
+
+        Most parsers work from the pieces Unfurl has already split out -- the domain, a
+        path segment, a query pair. A few need the URL as it was actually written,
+        because the thing they care about spans those pieces: a redirector whose token
+        sits in the query string and whose host is a subdomain cannot be rebuilt from a
+        registered domain and a path.
+        """
+
+        parent_nodes = self.get_predecessor_node(node)
+
+        if not parent_nodes:
+            return ''
+
+        for parent_node in parent_nodes:
+            if parent_node.data_type == 'url':
+                return parent_node.value
+
+            result = self.find_preceding_url(parent_node)
+            if result:
+                return result
 
         return ''
 

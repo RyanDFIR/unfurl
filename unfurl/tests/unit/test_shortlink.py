@@ -1,4 +1,5 @@
 from unfurl.core import Unfurl
+from unfurl.parsers import parse_shortlink
 from unfurl.tests.http_mocks import FakeResponse, patch_requests_get, redirect
 import unittest
 
@@ -252,6 +253,221 @@ class TestShortlinkGuards(unittest.TestCase):
         self.assertTrue(has_node(test, value='/g6VWYYwY12'))
         self.assertFalse(has_node(test, value='github.com'))
         self.assertEqual([], calls)
+
+
+class TestShortenerDetection(unittest.TestCase):
+    """Which domains Unfurl is willing to guess are link shorteners.
+
+    The guess used to be "any domain under eight characters", which fired at x.com,
+    box.com, cnn.com, npr.org, ibm.com, ups.com, vk.com, qq.com, ok.ru, ya.ru, t.me and
+    wa.me. For a forensics tool that is worse than a wasted round trip: fetching a URL
+    tells that site someone is looking at it.
+    """
+
+    # Short domains that are destinations, not shorteners.
+    REAL_SITES = ['x.com', 'box.com', 'cnn.com', 'npr.org', 'ibm.com', 'ups.com',
+                  'vk.com', 'qq.com', 'ok.ru', 'ya.ru', 't.me', 'wa.me']
+
+    # Shorteners that must still be expanded, via the redirect-header path.
+    SHORTENERS = ['t.co', 'goo.gl', 'is.gd', 'a.co', 'g.co', 'git.io', 'trib.al',
+                  'tinyurl.com', 'buff.ly']
+
+    def requested_domains(self, domain):
+        """Parse https://{domain}/abc123 and report the URLs actually requested."""
+
+        with patch_requests_get({}) as calls:
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value=f'https://{domain}/abc123')
+            test.parse_queue()
+        return calls
+
+    def test_real_sites_are_not_treated_as_shorteners(self):
+        for domain in self.REAL_SITES:
+            with self.subTest(domain=domain):
+                self.assertEqual(
+                    [], self.requested_domains(domain),
+                    msg=f'{domain} is a destination, not a shortener; Unfurl must not '
+                        f'fetch it just because the domain is short')
+
+    def test_known_shorteners_are_still_expanded(self):
+        for domain in self.SHORTENERS:
+            with self.subTest(domain=domain):
+                self.assertTrue(
+                    self.requested_domains(domain),
+                    msg=f'{domain} is a link shortener and should still be expanded')
+
+    def test_misp_list_is_reachable_for_short_domains(self):
+        """Regression: the length heuristic used to return unconditionally.
+
+        That made the MISP known-shortener list -- the authoritative one -- dead code for
+        every domain under eight characters, which is most shorteners.
+        """
+
+        test = Unfurl(remote_lookups=False)
+        misp = test.known_domain_lists['List of known URL Shorteners domains'].list
+
+        short_and_known = [d for d in misp if len(d) < 8]
+        self.assertTrue(short_and_known, 'expected the MISP list to contain short domains')
+
+        # Pick one that is not in the hard-coded redirect_expands table, so the only way
+        # it can be expanded is through the MISP lookup.
+        self.assertTrue(self.requested_domains('is.gd'))
+
+    def test_popularity_gate_uses_only_the_tighter_lists(self):
+        """The 1M-entry lists contain most of the web, shorteners included."""
+
+        test = Unfurl(remote_lookups=False)
+        self.assertTrue(test.domain_in_top_sites_list('x.com'))
+        self.assertFalse(test.domain_in_top_sites_list('git.io'))
+
+    def test_top_sites_lookup_is_cached_across_instances(self):
+        """The union is immutable reference data, so it is built once per process.
+
+        Rebuilding it per instance cost ~1.3 ms on every request the web app served.
+        """
+
+        from unfurl import core
+
+        core._top_sites_domains = None
+        first_instance = Unfurl(remote_lookups=False)
+        first_instance.domain_in_top_sites_list('x.com')
+        built = core._top_sites_domains
+        self.assertIsNotNone(built)
+
+        # A separate instance reuses it rather than rebuilding.
+        Unfurl(remote_lookups=False).domain_in_top_sites_list('example.com')
+        self.assertIs(built, core._top_sites_domains)
+
+    def test_named_shorteners_are_expanded(self):
+        """Every domain in additional_shortener_domains must actually be expanded.
+
+        These are popular enough to sit in top-sites lists, so the length guess skips
+        them deliberately -- naming them is the only thing keeping them working.
+        """
+
+        for domain in sorted(parse_shortlink.additional_shortener_domains):
+            with self.subTest(domain=domain):
+                self.assertTrue(
+                    self.requested_domains(domain),
+                    msg=f'{domain} is a named shortener but was not expanded')
+
+    def test_named_shorteners_are_still_needed(self):
+        """The audit invariant: each named domain is popular and absent from MISP.
+
+        If MISP picks one up, the entry here is redundant and should be deleted rather
+        than left to drift. If one drops out of the top-sites lists, the length guess
+        covers it again. Either way this test says so instead of the list quietly rotting.
+        """
+
+        test = Unfurl(remote_lookups=False)
+        misp = set(test.known_domain_lists['List of known URL Shorteners domains'].list)
+
+        for domain in sorted(parse_shortlink.additional_shortener_domains):
+            with self.subTest(domain=domain):
+                self.assertNotIn(
+                    domain, misp,
+                    msg=f'{domain} is now in the MISP list; drop it from '
+                        f'additional_shortener_domains')
+                self.assertTrue(
+                    test.domain_in_top_sites_list(domain),
+                    msg=f'{domain} is no longer in a top-sites list, so the length guess '
+                        f'would cover it; the explicit entry may be unnecessary')
+
+
+class TestQueryTokenRedirectors(unittest.TestCase):
+    """Redirectors whose token is in the query string, e.g. Constant Contact.
+
+    These need the original URL passed through untouched. The generic expander rebuilds
+    a URL from the registered domain and path, which drops the token; a tokenless
+    r20.rs6.net/tn.jsp answers 200, so it expands to nothing.
+    """
+
+    TRACKER_URL = 'https://r20.rs6.net/tn.jsp?f=001abcTOKEN&c=xyz&ch=abc'
+    DESTINATION = 'https://files.constantcontact.com/2efaa8b7001/a5bddf98.pdf'
+
+    def parse_tracker(self, url=None):
+        """Parse a tracker URL, returning (unfurl, urls_requested)."""
+
+        routes = {'r20.rs6.net': redirect(self.DESTINATION, status_code=302)}
+        with patch_requests_get(routes) as calls:
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value=url or self.TRACKER_URL)
+            test.parse_queue()
+        return test, calls
+
+    def test_full_url_is_passed_through_untouched(self):
+        """Host, path and query all matter, so none of them may be rebuilt."""
+
+        _, calls = self.parse_tracker()
+
+        self.assertEqual([self.TRACKER_URL], calls)
+
+    def test_destination_is_reported(self):
+        test, _ = self.parse_tracker()
+
+        self.assertTrue(has_node(test, data_type='url', value=self.DESTINATION))
+        self.assertTrue(has_node(test, value='files.constantcontact.com'))
+
+    def test_subdomain_is_matched_against_the_registered_domain(self):
+        """find_preceding_domain returns "r20.rs6.net", the table is keyed "rs6.net"."""
+
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(data_type='url', key=None, value=self.TRACKER_URL)
+        test.parse_queue()
+
+        path_node = next(n for n in test.nodes.values() if n.data_type == 'url.path')
+        self.assertEqual('r20.rs6.net', test.find_preceding_domain(path_node))
+        self.assertTrue(test.preceding_domain_matches(path_node, 'rs6.net'))
+
+    def test_hover_warns_that_the_click_may_be_registered(self):
+        """The token is per-recipient; fetching it can tell the sender they engaged."""
+
+        test, _ = self.parse_tracker()
+
+        expanded = next(n for n in test.nodes.values()
+                        if str(n.label).startswith('Expanded URL'))
+        self.assertIn('click tracker', expanded.hover)
+        self.assertIn('Constant Contact', expanded.hover)
+
+    def test_nothing_is_requested_without_remote_lookups(self):
+        with patch_requests_get({}) as calls:
+            test = Unfurl(remote_lookups=False)
+            test.add_to_queue(data_type='url', key=None, value=self.TRACKER_URL)
+            test.parse_queue()
+
+        self.assertEqual([], calls)
+        self.assertEqual([], expanded_nodes(test))
+
+
+class TestFindPrecedingUrl(unittest.TestCase):
+    """The helper that hands a parser the URL as it was actually written."""
+
+    def test_returns_the_full_url_from_a_path_node(self):
+        url = 'https://r20.rs6.net/tn.jsp?f=001abc&c=xyz'
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(data_type='url', key=None, value=url)
+        test.parse_queue()
+
+        path_node = next(n for n in test.nodes.values() if n.data_type == 'url.path')
+        self.assertEqual(url, test.find_preceding_url(path_node))
+
+    def test_reaches_past_intermediate_nodes(self):
+        url = 'https://example.com/a/b?x=1'
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(data_type='url', key=None, value=url)
+        test.parse_queue()
+
+        segment = next(n for n in test.nodes.values()
+                       if n.data_type == 'url.path.segment' and n.value == 'b')
+        self.assertEqual(url, test.find_preceding_url(segment))
+
+    def test_returns_empty_when_there_is_no_url_ancestor(self):
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(data_type='string', key=None, value='not-a-url')
+        test.parse_queue()
+
+        root = test.nodes[1]
+        self.assertEqual('', test.find_preceding_url(root))
 
 
 if __name__ == '__main__':
