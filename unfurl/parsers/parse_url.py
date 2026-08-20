@@ -43,13 +43,27 @@ def parse_delimited_string(unfurl_instance, node, delimiter, pairs=False) -> Non
                 parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
 
-def try_url_unquote(unfurl_instance, node) -> bool:
-    unquoted = urllib.parse.unquote_plus(node.value)
+def try_url_unquote(unfurl_instance, node, plus_is_space=False) -> bool:
+    """Add a node with the value's %xx escapes decoded, if decoding changes anything.
+
+    In a query string "+" stands for a space, but anywhere else it is a literal plus: a
+    separator inside a Gmail compose token, a character in base64, part of a UTC offset.
+    Decoding it as a space outside a query string quietly corrupts the value and presents
+    the result as a decoding, so callers opt in to that behaviour rather than inheriting it.
+    """
+    if plus_is_space:
+        unquoted = urllib.parse.unquote_plus(node.value)
+        hover = ('Unquoted URL (replaced %xx escapes with their single-character '
+                 'equivalent, and "+" with a space)')
+    else:
+        unquoted = urllib.parse.unquote(node.value)
+        hover = 'Unquoted URL (replaced %xx escapes with their single-character equivalent)'
+
     # The regex is to avoid erroneously unquoting a timestamp string (ending with +00:00)
     if unquoted != node.value and not re.match(r'.*\+\d\d:\d\d$', node.value):
         unfurl_instance.add_to_queue(
             data_type='string', key=None, value=unquoted,
-            hover='Unquoted URL (replaced %xx escapes with their single-character equivalent)',
+            hover=hover,
             parent_id=node.node_id, incoming_edge_config=urlparse_edge)
         return True
     return False
@@ -64,7 +78,7 @@ def try_url_parse(unfurl_instance, node) -> bool:
                 incoming_edge_config=urlparse_edge)
             return True
         return False
-    except:
+    except (ValueError, AttributeError, TypeError):
         return False
 
 
@@ -77,7 +91,7 @@ def run(unfurl, node):
             parsed_url = urllib.parse.urlparse(node.value)
             if (parsed_url.netloc and parsed_url.path) or (parsed_url.scheme and parsed_url.netloc):
                 node.data_type = 'url'
-        except:
+        except (ValueError, AttributeError, TypeError):
             # Guess it wasn't a URL
             return
 
@@ -146,7 +160,8 @@ def run(unfurl, node):
                 hover='This URL path contains <b>adjacent slashes</b>, meaning it has an '
                       '<b>empty path segment</b>. <br>This is legal, but servers disagree on how to '
                       'resolve it: some <br>collapse repeated slashes by default, while '
-                      'browsers and many application <br>frameworks preserve them. <br><br>The path above is shown unmodified. The '
+                      'browsers and many application <br>frameworks preserve them. <br><br>'
+                      'The path above is shown unmodified. The '
                       'empty segments are left out of the <br>numbered child segments, so a path with '
                       'them is numbered the same as one <br>without.',
                 parent_id=node.node_id, incoming_edge_config=urlparse_edge)
@@ -300,7 +315,8 @@ def run(unfurl, node):
 
         # If the query pair value is itself a URL, parse it as one.
         if not try_url_parse(unfurl, node):
-            try_url_unquote(unfurl, node)
+            # This is a query string, so "+" here really does mean a space.
+            try_url_unquote(unfurl, node, plus_is_space=True)
 
     elif node.data_type == 'url.path.segment':
         match = lookup_extension(node.value)
