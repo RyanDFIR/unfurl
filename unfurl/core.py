@@ -93,15 +93,21 @@ def remote_lookups_from_env():
     return enabled
 
 
-def resolve_remote_lookups(explicit=False, config=None):
+def resolve_remote_lookups(explicit=None, config=None):
     """Decide whether remote lookups are allowed, disabled unless something enables them.
 
-    Precedence: an explicit request (the CLI's -l, which can only turn them on), then
-    UNFURL_REMOTE_LOOKUPS, then the config files. The environment beats the config file
-    so that a container can enable lookups without editing the mounted unfurl.ini.
+    Precedence: an explicit True *or False* from the caller, then UNFURL_REMOTE_LOOKUPS,
+    then the config files. The environment beats the config file so that a container can
+    enable lookups without editing the mounted unfurl.ini.
+
+    `explicit=None` means "not specified" and defers to the environment and config, which
+    matches remote_lookups_from_env(). This used to test `if explicit:`, so False was
+    indistinguishable from unspecified and `Unfurl(remote_lookups=False)` could not turn
+    lookups off -- on a machine with them enabled in unfurl.ini it silently made real
+    requests. Callers that want to defer must pass None, not False.
     """
-    if explicit:
-        return True
+    if explicit is not None:
+        return bool(explicit)
 
     from_env = remote_lookups_from_env()
     if from_env is not None:
@@ -677,7 +683,7 @@ class Unfurl:
         return text_output
 
 
-def run(url, data_type='url', return_type='json', remote_lookups=False, extra_options=None):
+def run(url, data_type='url', return_type='json', remote_lookups=None, extra_options=None):
     u = Unfurl(remote_lookups=remote_lookups)
     u.add_to_queue(
         data_type=data_type,

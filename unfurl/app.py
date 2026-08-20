@@ -29,7 +29,7 @@ CORS(app)
 
 
 class UnfurlApp:
-    def __init__(self, unfurl_debug=False, unfurl_host='localhost', unfurl_port=5000, remote_lookups=False):
+    def __init__(self, unfurl_debug=False, unfurl_host='localhost', unfurl_port=5000, remote_lookups=None):
         self.unfurl_debug = unfurl_debug
         self.unfurl_host = unfurl_host
         self.unfurl_port = unfurl_port
@@ -95,7 +95,7 @@ class JsonVisJS(Resource):
             extra_options={'widthConstraint': {'maximum': 1200}})
 
 
-def web_app(host='localhost', port='5000', debug='True', remote_lookups=False):
+def web_app(host='localhost', port='5000', debug='True', remote_lookups=None):
 
     config = load_config()
     remote_lookups = resolve_remote_lookups(explicit=remote_lookups, config=config)

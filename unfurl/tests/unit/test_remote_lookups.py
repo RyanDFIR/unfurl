@@ -44,9 +44,45 @@ class TestResolveRemoteLookups(unittest.TestCase):
             self.assertFalse(resolve_remote_lookups(config=make_config('true')))
 
     def test_explicit_request_beats_environment(self):
-        """The CLI's -l is opt-in per run, so it wins; it can only ever enable."""
+        """An explicit choice is per-run, so it wins over environment and config."""
         with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'false'}):
             self.assertTrue(resolve_remote_lookups(explicit=True, config=make_config('false')))
+
+    def test_explicit_false_beats_environment_and_config(self):
+        """False must mean "off", not "unspecified".
+
+        This tested `if explicit:` originally, so False fell through to the environment
+        and config and `Unfurl(remote_lookups=False)` could not turn lookups off. On a
+        machine with lookups enabled in unfurl.ini that silently made real network
+        requests -- including from tests that had asked for them to be off.
+        """
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'true'}):
+            self.assertFalse(resolve_remote_lookups(explicit=False, config=make_config('true')))
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(resolve_remote_lookups(explicit=False, config=make_config('true')))
+
+    def test_none_defers_to_environment_and_config(self):
+        """None is how a caller says "not specified"; it must not force lookups off."""
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'true'}):
+            self.assertTrue(resolve_remote_lookups(explicit=None, config=make_config('false')))
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(resolve_remote_lookups(explicit=None, config=make_config('true')))
+
+    def test_resolution_is_idempotent(self):
+        """Feeding a resolved answer back in must return that same answer.
+
+        app.py resolves once in web_app() and the resolved boolean is passed down through
+        run() into Unfurl, where it is resolved again.
+        """
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'true'}):
+            once = resolve_remote_lookups(config=make_config())
+            self.assertEqual(once, resolve_remote_lookups(explicit=once, config=make_config()))
+
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'false'}):
+            once = resolve_remote_lookups(config=make_config())
+            self.assertEqual(once, resolve_remote_lookups(explicit=once, config=make_config()))
 
     def test_unset_environment_defers_to_config(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -105,6 +141,37 @@ class TestUnfurlHonorsEnvironment(unittest.TestCase):
     def test_explicit_request_still_wins(self):
         with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'false'}):
             self.assertTrue(Unfurl(remote_lookups=True).remote_lookups)
+
+    def test_explicit_false_disables_lookups_on_a_new_instance(self):
+        """Unfurl(remote_lookups=False) has to actually mean offline.
+
+        Tests rely on this to stay off the network, and an analyst relies on it to keep
+        evidence from being sent to third parties.
+        """
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'true'}):
+            self.assertFalse(Unfurl(remote_lookups=False).remote_lookups)
+
+    def test_default_construction_defers_to_environment(self):
+        """Unfurl() must keep honoring the environment, not default to off."""
+        with patch.dict(os.environ, {REMOTE_LOOKUPS_ENV_VAR: 'true'}):
+            self.assertTrue(Unfurl().remote_lookups)
+
+
+class TestRunHonorsRemoteLookups(unittest.TestCase):
+    """core.run() is the public entry point the web app and library callers use.
+
+    Its default changed from False to None so that "not specified" stays distinguishable
+    from "off" -- with a False default, fixing the resolver would have made run() ignore
+    UNFURL_REMOTE_LOOKUPS and unfurl.ini entirely.
+    """
+
+    def setUp(self):
+        core._warned_about_env_remote_lookups = False
+
+    def test_default_is_none_so_the_environment_still_applies(self):
+        import inspect
+        default = inspect.signature(core.run).parameters['remote_lookups'].default
+        self.assertIsNone(default, 'a False default would override env/config')
 
 
 if __name__ == '__main__':
