@@ -268,5 +268,210 @@ class TestUrlUnquoting(unittest.TestCase):
         self.assertEqual(corrupted, [])
 
 
+class TestSemicolonDelimitedPairs(unittest.TestCase):
+    """A run of ";"-delimited "key=value" pairs is decomposed into a node per pair.
+
+    Ad servers put these inside a path segment, where urlparse leaves them joined:
+    it splits path parameters off the *last* segment only, and the last segment of a
+    click tracker is rarely the one carrying them.
+    """
+
+    class FakeNode:
+        node_id = 1
+
+        def __init__(self, value):
+            self.value = value
+
+    def split(self, value):
+        """Return whether `value` was split, and the pairs it was split into."""
+        test = Unfurl()
+        matched = parse_url.try_semicolon_delimited_pairs(test, self.FakeNode(value))
+        emitted = [(item['key'], item['value']) for item in list(test.queue.queue)]
+        return matched, emitted
+
+    def test_pairs_are_split(self):
+        matched, emitted = self.split('a=1;b=2;c=3')
+        self.assertTrue(matched)
+        self.assertEqual([('a', '1'), ('b', '2'), ('c', '3')], emitted)
+
+    def test_empty_values_are_kept(self):
+        """"idfa=" is a parameter the tracker sent empty, not one it left out."""
+        matched, emitted = self.split('idfa=;cid=;p=1')
+        self.assertTrue(matched)
+        self.assertEqual([('idfa', ''), ('cid', ''), ('p', '1')], emitted)
+
+    def test_trailing_semicolon_is_a_terminator(self):
+        """Ad tags often end with ";"; it does not introduce an empty pair."""
+        matched, emitted = self.split('a=1;b=2;')
+        self.assertTrue(matched)
+        self.assertEqual([('a', '1'), ('b', '2')], emitted)
+
+    def test_value_may_contain_its_own_equals(self):
+        """The key is everything up to the first "="; the rest of the chunk is the value."""
+        matched, emitted = self.split('ord=@CACHEBUSTER@redirect=https:;n=1')
+        self.assertTrue(matched)
+        self.assertEqual([('ord', '@CACHEBUSTER@redirect=https:'), ('n', '1')], emitted)
+
+    def test_values_that_are_not_a_pair_run_are_left_alone(self):
+        """Every chunk has to be a pair, so a value is split entirely or not at all.
+
+        A partial match would mean guessing which semicolons are separators, and the
+        guess would be presented with the same authority as a real decoding.
+        """
+        for value in ('a=1',                          # one pair has nothing to split
+                      'foo; bar; baz',                # prose
+                      'key=value; another thing',     # only the first chunk is a pair
+                      'cats;lang=en',                 # only the last chunk is a pair
+                      'https://a.com;https://b.com',  # URLs, not pairs
+                      'text/html;charset=utf-8',      # a media type
+                      'YWJj==;ZGVm==',                # "="-padded base64
+                      'a=1;;b=2',                     # an empty chunk mid-run
+                      'path/to/x=1;y=2',              # a path, not a pair run
+                      ''):
+            matched, emitted = self.split(value)
+            self.assertFalse(matched, msg=f'did not expect {value!r} to be split')
+            self.assertEqual([], emitted)
+
+    def test_ad_tag_in_a_path_segment(self):
+        """End to end: the click tracker this was built for.
+
+        The destination URL is unencoded, so RFC 3986 scatters it across several
+        segments; that is a separate problem. What matters here is that the tracker's
+        own parameters come apart.
+        """
+
+        test = Unfurl()
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://trkn.us/click/process/partner=1086;c=11270;p=23056986;idfa=;'
+                  'cid=;ord=@CACHEBUSTER@redirect=https://curiositystream.com'
+                  '?utm_source=Audacy')
+        test.parse_queue()
+
+        pairs = {node.key: node.value for node in test.nodes.values()
+                 if node.data_type == 'url.query.pair'}
+        self.assertEqual('1086', pairs['partner'])
+        self.assertEqual('11270', pairs['c'])
+        self.assertEqual('23056986', pairs['p'])
+        self.assertEqual('', pairs['idfa'])
+        self.assertEqual('', pairs['cid'])
+        self.assertEqual('@CACHEBUSTER@redirect=https:', pairs['ord'])
+
+        # The segment the pairs came from is still shown unaltered.
+        segments = [node.value for node in test.nodes.values()
+                    if node.data_type == 'url.path.segment']
+        self.assertIn(
+            'partner=1086;c=11270;p=23056986;idfa=;cid=;ord=@CACHEBUSTER@redirect=https:',
+            segments)
+
+    def test_pair_run_inside_a_query_parameter(self):
+        """A query parameter whose value is itself a run of pairs."""
+
+        test = Unfurl()
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://example.com/page?data=a%3D1%3Bb%3D2%3Bc%3D3')
+        test.parse_queue()
+
+        pairs = {node.key: node.value for node in test.nodes.values()
+                 if node.data_type == 'url.query.pair'}
+        self.assertEqual('a=1;b=2;c=3', pairs['data'])
+        self.assertEqual('1', pairs['a'])
+        self.assertEqual('2', pairs['b'])
+        self.assertEqual('3', pairs['c'])
+
+    def test_semicolon_in_a_query_value_is_not_split(self):
+        """"?q=cats;lang=en" is one parameter whose value contains a semicolon.
+
+        Semicolon was once an accepted query separator, so this could be read as two
+        parameters -- but nothing in the URL says which reading is right, and "cats"
+        is not a pair, so the value is left as the server would have received it.
+        """
+
+        test = Unfurl()
+        test.add_to_queue(
+            data_type='url', key=None, value='https://example.com/search?q=cats;lang=en')
+        test.parse_queue()
+
+        pairs = {node.key: node.value for node in test.nodes.values()
+                 if node.data_type == 'url.query.pair'}
+        self.assertEqual({'q': 'cats;lang=en'}, pairs)
+
+
+class TestPathParameters(unittest.TestCase):
+    """RFC 3986 path parameters -- the ";" run urlparse splits off the last path segment.
+
+    They are emitted as query pairs so the parsers keyed on query pairs see them too; a
+    "utm_source" is the same thing wherever in the URL it was carried. What does differ
+    is "+", which is a space in a query string and a literal plus in a path.
+    """
+
+    @staticmethod
+    def pairs_for(url):
+        test = Unfurl()
+        test.add_to_queue(data_type='url', key=None, value=url)
+        test.parse_queue()
+        return test, {node.key: node.value for node in test.nodes.values()
+                      if node.data_type == 'url.query.pair'}
+
+    def test_empty_value_does_not_drop_the_run(self):
+        """"idfa=" is a parameter sent blank, not a parameter left out.
+
+        The detection regex used to require a character of value before the delimiter,
+        so a run containing an empty one matched nothing and every pair in it was lost,
+        including the well-formed ones.
+        """
+        _, pairs = self.pairs_for('https://example.com/a/x;partner=1086;idfa=;c=1')
+        self.assertEqual('1086', pairs['partner'])
+        self.assertEqual('', pairs['idfa'])
+        self.assertEqual('1', pairs['c'])
+
+    def test_run_without_an_empty_value_still_works(self):
+        _, pairs = self.pairs_for('https://example.com/a/x;c=11270;p=23056986')
+        self.assertEqual('11270', pairs['c'])
+        self.assertEqual('23056986', pairs['p'])
+
+    def test_trailing_delimiter_is_a_terminator(self):
+        test, pairs = self.pairs_for('https://example.com/a/x;a=1;b=2;')
+        self.assertEqual({'a': '1', 'b': '2'}, pairs)
+        self.assertNotIn('', [node.key for node in test.nodes.values()])
+
+    def test_chunk_without_an_equals_is_not_shown_as_a_pair(self):
+        """"garbage" and "garbage=" are different inputs and must not render alike.
+
+        Splitting a chunk that has no "=" into a key with an empty value would assert a
+        separator the URL never contained, so it is kept whole instead.
+        """
+        test, pairs = self.pairs_for('https://example.com/a/x;a=1;garbage;b=2')
+        self.assertEqual({'a': '1', 'b': '2'}, pairs)
+        self.assertIn('garbage', [node.value for node in test.nodes.values()
+                                  if node.data_type == 'string'])
+
+    def test_plus_in_a_path_parameter_stays_literal(self):
+        """A path parameter is not a query string, so "+" is a plus and not a space."""
+        test, pairs = self.pairs_for('https://example.com/a/x;name=a+b;c=1')
+        self.assertEqual('a+b', pairs['name'])
+        self.assertNotIn('a b', [node.value for node in test.nodes.values()
+                                 if isinstance(node.value, str)])
+
+    def test_plus_in_a_semicolon_run_in_an_earlier_segment_stays_literal(self):
+        """The same holds for a run urlparse leaves inside a path segment."""
+        test, pairs = self.pairs_for('https://example.com/click/p=a+b;c=1/end')
+        self.assertEqual('a+b', pairs['p'])
+        self.assertNotIn('a b', [node.value for node in test.nodes.values()
+                                 if isinstance(node.value, str)])
+
+    def test_plus_in_a_real_query_parameter_is_still_a_space(self):
+        """The provenance check must not switch off "+" decoding where it belongs."""
+        _, pairs = self.pairs_for('https://example.com/a/b?name=a+b')
+        self.assertEqual('a b', pairs['name'])
+
+    def test_percent_escapes_in_a_path_parameter_still_decode(self):
+        """Keeping "+" literal must not stop ordinary unquoting."""
+        test, _ = self.pairs_for('https://example.com/a/x;name=a%20b;c=1')
+        self.assertIn('a b', [node.value for node in test.nodes.values()
+                              if isinstance(node.value, str)])
+
+
 if __name__ == '__main__':
     unittest.main()
