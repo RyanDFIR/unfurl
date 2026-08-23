@@ -82,6 +82,67 @@ def try_url_parse(unfurl_instance, node) -> bool:
         return False
 
 
+# A run of "key=value" pairs joined by ";". Old ad servers use it inside a path segment,
+# and it was once W3C-recommended as an alternative to "&" in a query string. Every chunk
+# must be a pair and neither key nor value may contain "/", so this cannot fire on a URL or
+# on prose that happens to contain a semicolon. A value may contain "=" (ad tags routinely
+# stuff one in) but may not begin with one, which keeps runs of "="-padded base64 out.
+_semicolon_pair = r'[^/;=]+=(?:[^/;=][^/;]*)?'
+semicolon_delimited_pairs_re = re.compile(rf'(?:{_semicolon_pair};)+{_semicolon_pair};?')
+
+
+def value_came_from_a_query_string(unfurl_instance, node) -> bool:
+    """Whether this node's value was carried in a query string, rather than in the path.
+
+    "+" stands for a space in a query string and for a literal plus everywhere else, so a
+    pair lifted out of a path segment must not inherit the query-string reading. The
+    node's own data_type cannot answer this -- pairs from the path and from the query are
+    deliberately the same type, so that the parsers keyed on query pairs see both -- so
+    walk up to the nearest ancestor that names the part of the URL the value came from.
+
+    Defaults to True when nothing in the chain says: a bare "a=b&c=d" string of unknown
+    provenance is query-shaped, and that is the reading it has always been given here.
+    """
+    for ancestor in unfurl_instance.get_predecessor_chain(node):
+        if ancestor.data_type in ('url.query', 'url.fragment'):
+            return True
+        if ancestor.data_type in ('url.path', 'url.path.segment', 'url.params'):
+            return False
+
+    return True
+
+
+def try_semicolon_delimited_pairs(unfurl_instance, node) -> bool:
+    """Add a node per pair if the whole value is a run of ";"-delimited "key=value" pairs.
+
+    Requires every chunk to be a pair, so a value is either entirely this shape or left
+    alone -- a partial match would mean guessing which semicolons are separators.
+    """
+    if not isinstance(node.value, str):
+        return False
+
+    if not semicolon_delimited_pairs_re.fullmatch(node.value):
+        return False
+
+    for pair in node.value.split(';'):
+        # A trailing ";" is common in ad tags; it terminates the run rather than
+        # introducing an empty pair.
+        if not pair:
+            continue
+
+        # The key is everything up to the first "=", so a value containing its own "="
+        # stays intact instead of being split into a key that was never there.
+        key, _, value = pair.partition('=')
+        unfurl_instance.add_to_queue(
+            data_type='url.query.pair', key=key, value=value, label=f'{key}: {value}',
+            hover='This is one of a run of <b>";"-delimited "key=value" pairs</b>. Ad servers '
+                  'commonly use <br>them inside a path segment, and "<b>;</b>" was once '
+                  'W3C-recommended as an <br>alternative to "&" in a query string.',
+            parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+
+    return True
+
+
 def run(unfurl, node):
 
     if not node.data_type.startswith('url'):
@@ -236,15 +297,45 @@ def run(unfurl, node):
                     parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
     elif node.data_type == 'url.params':
-        split_params_re = re.compile(r'^(?P<key>[^=]+?)=(?P<value>[^=?]+)(?P<delim>[;,|])')
+        # The value may be empty ("idfa=;c=1" is a parameter the server was sent blank,
+        # not one it was not sent), so requiring a character here would match nothing and
+        # drop the whole run -- including the pairs that are well-formed.
+        split_params_re = re.compile(r'^(?P<key>[^=]+?)=(?P<value>[^=?]*)(?P<delim>[;,|])')
         split_params = split_params_re.match(node.value)
         if split_params:
+            # Path parameters are emitted as query pairs so that the parsers keyed on
+            # query pairs see them too; the hover says where they actually came from, and
+            # value_came_from_a_query_string() keeps "+" literal for them.
+            path_param_hover = (
+                'This is a <b>path parameter</b>, per <a href="'
+                'https://tools.ietf.org/html/rfc3986" target="_blank">RFC3986</a>. It sits '
+                'in the URL path rather than the query string, so a "+" in its value '
+                'is a literal plus.')
+
             x = split_params.group('delim')
             parsed_params = node.value.split(x)
             for parsed_param in parsed_params:
+                # A trailing delimiter terminates the run; it is not an empty parameter.
+                if not parsed_param:
+                    continue
+
+                # A chunk with no "=" is not a pair. Splitting it into a key with an empty
+                # value would show it identically to "<chunk>=", asserting a separator the
+                # URL never contained, so it is kept whole instead.
+                if '=' not in parsed_param:
+                    unfurl.add_to_queue(
+                        data_type='string', key=None, value=parsed_param,
+                        hover='This is one of the <b>path parameters</b>, per <a href="'
+                              'https://tools.ietf.org/html/rfc3986" target="_blank">RFC3986'
+                              '</a>. It is not a "key=value" pair, so it is shown as it '
+                              'was written.',
+                        parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+                    continue
+
                 key, _, value = parsed_param.partition('=')
                 unfurl.add_to_queue(
-                    data_type='url.param.pair', key=key, value=value,
+                    data_type='url.query.pair', key=key, value=value,
+                    hover=path_param_hover,
                     parent_id=node.node_id, incoming_edge_config=urlparse_edge)
 
     # This should only occur when a URL node was parsed previously and netloc != hostname, which means there are
@@ -314,9 +405,16 @@ def run(unfurl, node):
                 return
 
         # If the query pair value is itself a URL, parse it as one.
-        if not try_url_parse(unfurl, node):
-            # This is a query string, so "+" here really does mean a space.
-            try_url_unquote(unfurl, node, plus_is_space=True)
+        if try_url_parse(unfurl, node):
+            return
+
+        # A value can hold a run of ";"-delimited pairs of its own (a=1;b=2;c=3).
+        if try_semicolon_delimited_pairs(unfurl, node):
+            return
+
+        # "+" only means a space if this pair really came from a query string.
+        try_url_unquote(
+            unfurl, node, plus_is_space=value_came_from_a_query_string(unfurl, node))
 
     elif node.data_type == 'url.path.segment':
         match = lookup_extension(node.value)
@@ -344,6 +442,11 @@ def run(unfurl, node):
                 data_type='file.ext', key='File Extension', value=extension,
                 hover=hover,
                 parent_id=node.node_id, incoming_edge_config=urlparse_edge)
+
+        # RFC 3986 calls a ";"-delimited run inside a segment the path parameters, but
+        # urlparse only splits them off the *last* segment, so a run in any earlier one
+        # (which is where ad servers put theirs) arrives here still joined.
+        try_semicolon_delimited_pairs(unfurl, node)
 
     else:
         if not isinstance(node.value, str):
@@ -375,6 +478,10 @@ def run(unfurl, node):
         m = amp_delimited_pairs_re.fullmatch(node.value)
         if m:
             parse_delimited_string(unfurl, node, delimiter='&', pairs=True)
+            return
+
+        # If the value contains more pairs of the form "a=b;c=d;e=f"
+        if try_semicolon_delimited_pairs(unfurl, node):
             return
 
         try_url_unquote(unfurl, node)
