@@ -25,6 +25,10 @@ from typing import Union
 
 # A complete <a ...>...</a>, treated as one unbreakable unit when wrapping hover text.
 anchor_re = re.compile(r'<a\b[^>]*>.*?</a>', re.IGNORECASE | re.DOTALL)
+
+# Anchors are matched first so a link is held whole, link text and all; anything else
+# that looks like a tag is held on its own.
+markup_re = re.compile(rf'{anchor_re.pattern}|<[^>]+>', re.IGNORECASE | re.DOTALL)
 long_int_re = re.compile(r'\d{8,}')
 urlsafe_b64_re = re.compile(r'[A-Za-z0-9_\-]{8,}={0,2}')
 standard_b64_re = re.compile(r'[A-Za-z0-9+/]{8,}={0,2}')
@@ -152,42 +156,63 @@ def parse_ip_address(potential_ip):
     return parsed_ip
 
 
+hard_break = '<br>'
+
+# Lines are wrapped at this width, but a run only a little longer is left alone: one
+# slightly long line reads better than a long line followed by a short orphan.
+wrap_width = 60
+wrap_slack = 10
+
+
+def _wrap_hover_segment(segment: str) -> str:
+    """Wrap one run of hover text, which contains no hard line breaks of its own."""
+
+    if not segment.strip():
+        return segment
+
+    # Hold markup aside as single unbreakable tokens, so a line break can never land
+    # inside a tag and split an href in half. The placeholder is shorter than the markup
+    # it stands in for, which is what we want: lines are measured by roughly what the
+    # reader sees rather than by the length of the HTML. Anchors are held whole, link
+    # text included, so a citation is never broken across lines.
+    held = []
+
+    def hold_markup(match):
+        held.append(match.group(0))
+        return f'\x00{len(held) - 1}\x00'
+
+    stashed = markup_re.sub(hold_markup, segment)
+
+    if len(stashed) < wrap_width + wrap_slack:
+        return segment
+
+    # break_on_hyphens would split a word like "full-size" across two lines.
+    wrapped = hard_break.join(
+        textwrap.wrap(stashed, width=wrap_width, break_on_hyphens=False))
+
+    for index, markup in enumerate(held):
+        wrapped = wrapped.replace(f'\x00{index}\x00', markup)
+    return wrapped
+
+
 def wrap_hover_text(hover_text: Union[str, None]) -> Union[str, None]:
+    """Wrap hover text for display, keeping any line breaks the author wrote.
+
+    A <br> in the source is a decision about where a line should end, so wrapping happens
+    between those breaks and never across them: each run is wrapped on its own and the
+    hard breaks stay put. Width is measured against what a reader actually sees, since
+    markup is held aside first -- a hover carrying a long href or several <b> tags is not
+    wrapped short because of characters that never render.
+    """
+
     if not hover_text:
         return None
 
     if not isinstance(hover_text, str):
         return None
 
-    # If there are any manually inserted <br> or links, leave it
-    # alone. This isn't perfect detection, but it'll do.
-    if '<br' in hover_text:
-        return hover_text
-
-    # If the text is just a little long, I'd rather have it all on
-    # one line than split into one long line and a short second line
-    if len(hover_text) < 70:
-        return hover_text
-
-    # Hold each <a>...</a> aside as a single unbreakable token, so a line break can
-    # never land inside a tag and split an href in half. The placeholder is shorter
-    # than the markup it stands in for, which is what we want: lines are measured by
-    # roughly what the reader sees rather than by the length of the HTML.
-    anchors = []
-
-    def stash_anchor(match):
-        anchors.append(match.group(0))
-        return f'\x00{len(anchors) - 1}\x00'
-
-    stashed = anchor_re.sub(stash_anchor, hover_text)
-
-    # "Wrap" the hover text by splitting it into lines of length <width>,
-    # then joining them together with a <br>.
-    wrapped = '<br>'.join(textwrap.wrap(stashed, width=60))
-
-    for index, anchor in enumerate(anchors):
-        wrapped = wrapped.replace(f'\x00{index}\x00', anchor)
-    return wrapped
+    return hard_break.join(
+        _wrap_hover_segment(segment) for segment in hover_text.split(hard_break))
 
 
 def create_epoch_seconds_timestamp(
