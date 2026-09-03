@@ -427,12 +427,7 @@ def run(unfurl, node):
                 hover += f' ({file_type.description})'
             hover += '.'
             if file_type.note:
-                # Wrap each paragraph before joining them. wrap_hover_text leaves any
-                # text that already contains a <br> alone -- the author is assumed to
-                # have chosen the breaks -- so adding the separator first would mean
-                # the note never gets wrapped at all.
-                hover = f'{utils.wrap_hover_text(hover)}<br><br>' \
-                        f'{utils.wrap_hover_text(file_type.note)}'
+                hover = f'{hover}<br><br>{file_type.note}'
 
             unfurl.add_to_queue(
                 data_type='file.name', key='File Name',
