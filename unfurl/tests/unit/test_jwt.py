@@ -81,6 +81,50 @@ class TestJWT(unittest.TestCase):
         # confirm that the header was parsed as JSON
         self.assertEqual('alg', test.nodes[19].key)
 
+    def test_dotted_url_path_is_not_a_jwt(self):
+        """Don't treat a dotted URL path segment as a JWT.
+
+        Three dot-separated base64url-ish runs are a common shape for URL path
+        segments; only a decodable JOSE header makes one a JWT.
+
+        Test data source: ChatGPT ad landing URL (Expedia)
+        """
+
+        test = Unfurl()
+        test.remote_lookups = False
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://www.expedia.com/Discovery-Cove-Orlando.d6068683.Vacation-Attraction')
+        test.parse_queue()
+
+        # confirm no part of the path was claimed as a JWT
+        self.assertEqual(
+            [], [node.data_type for node in test.nodes.values()
+                 if node.data_type.startswith('jwt.')])
+
+        # confirm the path segment survived intact rather than being split up
+        self.assertIn(
+            'Discovery-Cove-Orlando.d6068683.Vacation-Attraction',
+            [node.value for node in test.nodes.values()])
+
+    def test_non_json_header_is_not_a_jwt(self):
+        """Don't treat a value as a JWT when its header decodes to non-JSON.
+
+        The three segments here are all valid base64url of the right length, so
+        only the header check rejects them.
+        """
+
+        test = Unfurl()
+        test.remote_lookups = False
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='bm90LWEtaGVhZGVy.bm90LWEtcGF5bG9hZA.bm90LWEtc2lnbmF0dXJl')
+        test.parse_queue()
+
+        self.assertEqual(
+            [], [node.data_type for node in test.nodes.values()
+                 if node.data_type.startswith('jwt.')])
+
 
 if __name__ == '__main__':
     unittest.main()
