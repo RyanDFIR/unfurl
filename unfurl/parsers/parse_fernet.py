@@ -121,9 +121,11 @@ def decode_fernet_token(value, earliest, latest):
         if ciphertext_length % FERNET_BLOCK_SIZE:
             continue
 
-        # The timestamp is the strongest false-positive gate. Other formats do
-        # begin with these bytes; what they do not do is carry a plausible
-        # date in them.
+        # An independent check on the structural gates above, rather than a
+        # stronger one. Measured against a large corpus of real-world URLs,
+        # the length checks already rejected every non-token, but they only
+        # catch values of the wrong shape: this is what would catch one that
+        # is shaped exactly right and carries a nonsense date.
         if not earliest <= int.from_bytes(payload[1:9], 'big') < latest:
             continue
 
