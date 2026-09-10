@@ -1,4 +1,4 @@
-from unfurl.utils import wrap_hover_text, wrap_width, wrap_slack
+from unfurl.utils import strip_hover_markup, wrap_hover_text, wrap_width, wrap_slack
 import re
 import unittest
 
@@ -137,6 +137,48 @@ class TestHoverWrappingWordBreaks(unittest.TestCase):
 
         self.assertNotIn('full-<br>size', wrapped)
         self.assertIn('full-size', wrapped)
+
+
+class TestStripHoverMarkup(unittest.TestCase):
+    """Plain-text outputs (the text tree, the 3D graph) can't render markup."""
+
+    def test_empty_and_non_string_input(self):
+        for value in (None, ''):
+            with self.subTest(value=value):
+                self.assertFalse(strip_hover_markup(value))
+
+    def test_line_break_becomes_a_space(self):
+        self.assertEqual('one two', strip_hover_markup('one<br>two'))
+
+    def test_line_break_variants_are_all_handled(self):
+        for markup in ('<br>', '<br/>', '<br />', '<BR>'):
+            with self.subTest(markup=markup):
+                self.assertEqual('one two', strip_hover_markup(f'one{markup}two'))
+
+    def test_a_run_of_breaks_collapses_to_one_space(self):
+        """core joins a cycle warning onto a hover with '<br><br>'."""
+
+        self.assertEqual('one two', strip_hover_markup('one<br><br>two'))
+
+    def test_other_tags_are_removed_without_adding_space(self):
+        self.assertEqual('a bold word', strip_hover_markup('a <b>bold</b> word'))
+
+    def test_citation_links_are_removed(self):
+        text = 'See the spec. <a href="https://example.com" target="_blank">[ref]</a>'
+        self.assertEqual('See the spec.', strip_hover_markup(text))
+
+    def test_wrapped_hover_survives_the_round_trip(self):
+        """The regression: wrap_hover_text replaces a space with '<br>', so
+        dropping the tag outright welds the words on either side together."""
+
+        text = ('JSON Web Tokens have three distinct parts: the header, payload, and '
+                'signature. The header identifies which algorithm is used to generate '
+                'the signature.')
+
+        stripped = strip_hover_markup(wrap_hover_text(text))
+
+        self.assertEqual(text, stripped)
+        self.assertNotIn('theheader', stripped)
 
 
 if __name__ == '__main__':

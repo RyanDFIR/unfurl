@@ -29,6 +29,12 @@ anchor_re = re.compile(r'<a\b[^>]*>.*?</a>', re.IGNORECASE | re.DOTALL)
 # Anchors are matched first so a link is held whole, link text and all; anything else
 # that looks like a tag is held on its own.
 markup_re = re.compile(rf'{anchor_re.pattern}|<[^>]+>', re.IGNORECASE | re.DOTALL)
+
+# A line break in hover text, in any of the forms an author might write.
+line_break_re = re.compile(r'<br\s*/?>', re.IGNORECASE)
+
+# Markup and citation brackets, neither of which a plain-text output can render.
+plain_text_strip_re = re.compile(r'<.*?>|\[.*?\]', re.DOTALL)
 long_int_re = re.compile(r'\d{8,}')
 urlsafe_b64_re = re.compile(r'[A-Za-z0-9_\-]{8,}={0,2}')
 standard_b64_re = re.compile(r'[A-Za-z0-9+/]{8,}={0,2}')
@@ -213,6 +219,25 @@ def wrap_hover_text(hover_text: Union[str, None]) -> Union[str, None]:
 
     return hard_break.join(
         _wrap_hover_segment(segment) for segment in hover_text.split(hard_break))
+
+
+def strip_hover_markup(hover_text: Union[str, None]) -> Union[str, None]:
+    """Render hover text as plain text, for outputs that cannot show markup.
+
+    A <br> stands where a space would otherwise be, whether the author wrote it or
+    wrap_hover_text inserted it while wrapping, so it becomes a space. Deleting it
+    outright instead runs the words on either side together ("the tokenwas created").
+    Every other tag renders as nothing and is simply removed.
+    """
+
+    if not hover_text:
+        return hover_text
+
+    spaced = line_break_re.sub(' ', str(hover_text))
+    stripped = plain_text_strip_re.sub('', spaced)
+
+    # A run of breaks, or a tag sitting next to one, can leave several spaces behind.
+    return re.sub(r'\s{2,}', ' ', stripped).strip()
 
 
 def create_epoch_seconds_timestamp(

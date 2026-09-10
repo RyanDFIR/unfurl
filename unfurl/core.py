@@ -751,7 +751,7 @@ class Unfurl:
         }
 
         if node.hover:
-            transformed['description'] = re.sub(r'<.*?>|\[.*?\]', '', node.hover)
+            transformed['description'] = utils.strip_hover_markup(node.hover)
 
         return transformed
 
@@ -810,7 +810,7 @@ class Unfurl:
             if detailed:
                 text_output += f' (type: {node.data_type})'
                 if node.hover:
-                    hover = re.sub(r'<.*?>|\[.*?\]', '', node.hover)
+                    hover = utils.strip_hover_markup(node.hover)
                     text_output += f' -- {hover}'
 
             indent += ' '
@@ -820,7 +820,7 @@ class Unfurl:
             if detailed:
                 text_output += f' (type: {node.data_type})'
                 if node.hover:
-                    hover = re.sub(r'<.*?>|\[.*?\]', '', node.hover)
+                    hover = utils.strip_hover_markup(node.hover)
                     text_output += f' -- {hover}'
 
             indent += '|  '
@@ -829,7 +829,7 @@ class Unfurl:
             if detailed:
                 text_output += f' (type: {node.data_type})'
                 if node.hover:
-                    hover = re.sub(r'<.*?>|\[.*?\]', '', node.hover)
+                    hover = utils.strip_hover_markup(node.hover)
                     text_output += f' -- {hover}'
 
             indent += '   '
