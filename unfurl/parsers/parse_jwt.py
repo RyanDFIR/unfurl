@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import re
 import logging
+from unfurl import utils
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +146,25 @@ jwt_fields = {
 }
 
 
+def header_is_jose(encoded_header):
+    """Return True if encoded_header decodes to a JOSE header.
+
+    RFC 7515 requires the header of a JWS (and therefore of a JWT) to be a JSON
+    object carrying an "alg" member, so a value that doesn't decode that way
+    isn't a JWT no matter what shape it has.
+    """
+    header_bytes = utils.try_urlsafe_b64_decode(encoded_header)
+    if not header_bytes:
+        return False
+
+    try:
+        header = json.loads(header_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False
+
+    return isinstance(header, dict) and 'alg' in header
+
+
 def run(unfurl, node):
 
     if node.key in jwt_fields.keys():
@@ -168,6 +189,13 @@ def run(unfurl, node):
                         r'(?P<jwt_sig_enc>[A-Za-z0-9_\-]{8,})$')
     m = jwt_re.match(node.value)
     if m:
+        # The regex matches anything shaped like three dot-separated base64url
+        # runs, which ordinary URL path segments often are (for example
+        # "Discovery-Cove-Orlando.d6068683.Vacation-Attraction"). Decoding the
+        # header is what actually distinguishes a JWT from that shape.
+        if not header_is_jose(m['jwt_header_enc']):
+            return
+
         if m.groupdict().get('jwt_header_enc'):
             unfurl.add_to_queue(
                 data_type='jwt.header.enc', key='JWT Header', value=m['jwt_header_enc'],
