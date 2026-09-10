@@ -17,10 +17,41 @@
 import argparse
 import csv
 import os
+import sys
 from unfurl import core
 
 
+def configure_output_encoding():
+    """Make the console streams able to carry unfurl's output.
+
+    The text tree is drawn with box-drawing characters, edge labels can be
+    emoji, and node values can hold anything that was in the input. Python
+    encodes stdout using the locale's encoding, which on Windows is typically
+    cp1252 and can represent none of those, so printing a tree raises
+    UnicodeEncodeError and the whole run is lost.
+
+    Switch the streams to UTF-8, unless the user set PYTHONIOENCODING, in which
+    case they have already said what they want and we leave it alone.
+    """
+    if os.environ.get('PYTHONIOENCODING'):
+        return
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8')
+        except (AttributeError, OSError, ValueError):
+            # Not a reconfigurable text stream (it may have been replaced with
+            # something else entirely). Settle for not raising on characters it
+            # cannot represent, if even that much is possible.
+            try:
+                stream.reconfigure(errors='replace')
+            except (AttributeError, OSError, ValueError):
+                pass
+
+
 def command_line_interface():
+    configure_output_encoding()
+
     parser = argparse.ArgumentParser(
         description='unfurl takes a URL and expands ("unfurls") it into a directed graph, extracting every '
                     'bit of information from the URL and exposing the obscured.')
