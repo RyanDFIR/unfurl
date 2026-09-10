@@ -417,16 +417,29 @@ def run(unfurl, node):
 
         elif node.key == 'sxsrf':
             node.extra_options = {'widthConstraint': {'maximum': 400}}
-            sxs_0, sxs_1 = node.value.split(':', 1)
-            unfurl.add_to_queue(data_type='google.sxsrf', key=1, value=sxs_0,
-                                parent_id=node.node_id, incoming_edge_config=google_edge)
-            unfurl.add_to_queue(
-                data_type='epoch-milliseconds', key=2, value=sxs_1,
-                hover='The <b>sxsrf</b> parameter contains a timestamp, believed<br>'
-                      ' to correspond to the previous page load. <br><br>Refernces:<ul><li>'
-                      '<a href="https://twitter.com/phillmoore/status/1169846359509233664" target="_blank">'
-                      'Phill Moore on Twitter</a></li></ul>', parent_id=node.node_id,
-                incoming_edge_config=google_edge)
+
+            # sxsrf is usually "<token>:<epoch milliseconds>", but not always: it is
+            # sometimes empty, sometimes just the token with no separator, and
+            # sometimes has a separator with nothing after it. partition() handles
+            # all of those, where split(':', 1) raised ValueError on any value
+            # without a colon and took the whole parser down with it.
+            sxsrf_token, _, sxsrf_timestamp = node.value.partition(':')
+
+            if sxsrf_token:
+                unfurl.add_to_queue(data_type='google.sxsrf', key=1, value=sxsrf_token,
+                                    parent_id=node.node_id, incoming_edge_config=google_edge)
+
+            # Only the digits are a timestamp. Values recovered from page source can
+            # carry whitespace or a run-together second URL after the milliseconds,
+            # and neither should be handed to the timestamp parser.
+            if sxsrf_timestamp.isdigit():
+                unfurl.add_to_queue(
+                    data_type='epoch-milliseconds', key=2, value=sxsrf_timestamp,
+                    hover='The <b>sxsrf</b> parameter contains a timestamp, believed<br>'
+                          ' to correspond to the previous page load. <br><br>Refernces:<ul><li>'
+                          '<a href="https://twitter.com/phillmoore/status/1169846359509233664" target="_blank">'
+                          'Phill Moore on Twitter</a></li></ul>', parent_id=node.node_id,
+                    incoming_edge_config=google_edge)
 
         elif node.key == 'tbm':
             tbm_mappings = {

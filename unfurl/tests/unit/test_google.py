@@ -260,5 +260,70 @@ class TestGoogleAccountParams(unittest.TestCase):
         self.assertIn('Google account index 1 (an additional signed-in account)', labels)
 
 
+class TestGoogleSxsrf(unittest.TestCase):
+    """sxsrf is usually "<token>:<epoch milliseconds>", but real values vary."""
+
+    def parse(self, url):
+        test = Unfurl()
+        test.remote_lookups = False
+        test.add_to_queue(data_type='url', key=None, value=url)
+        test.parse_queue()
+        return test
+
+    def test_sxsrf_token_and_timestamp(self):
+        test = self.parse(
+            'https://www.google.com/search?q=dfir'
+            '&sxsrf=AM9HkKkysRytfGfAU860nAXcaRYKmB-sbg%3A1703921243217')
+
+        self.assertIn('AM9HkKkysRytfGfAU860nAXcaRYKmB-sbg',
+                      [n.value for n in get_nodes_by_type(test, 'google.sxsrf')])
+
+        parsed = get_nodes_by_type(test, 'timestamp.epoch-milliseconds')
+        self.assertEqual(1, len(parsed))
+        self.assertEqual('2023-12-30 07:27:23.217+00:00', parsed[0].value)
+
+    def test_empty_sxsrf_does_not_crash(self):
+        """The regression: split(':', 1) raised ValueError and took the whole
+        Google parser down, so every other Google param on the URL was lost."""
+
+        test = self.parse('https://www.google.com/search?q=dfir&sxsrf=')
+
+        self.assertEqual([], get_nodes_by_type(test, 'google.sxsrf'))
+        self.assertEqual([], get_nodes_by_type(test, 'timestamp.epoch-milliseconds'))
+
+        # the rest of the Google parsing still ran
+        self.assertIn('Search Query: dfir',
+                      [n.value for n in get_nodes_by_type(test, 'google.q')])
+
+    def test_sxsrf_without_a_separator_is_all_token(self):
+        test = self.parse(
+            'https://www.google.com/search?q=dfir&sxsrf=ACQVn08gihCHPiTtyxcynvYW4n-Fhg2IqA')
+
+        self.assertIn('ACQVn08gihCHPiTtyxcynvYW4n-Fhg2IqA',
+                      [n.value for n in get_nodes_by_type(test, 'google.sxsrf')])
+        self.assertEqual([], get_nodes_by_type(test, 'timestamp.epoch-milliseconds'))
+
+    def test_sxsrf_with_empty_timestamp_yields_no_timestamp(self):
+        test = self.parse(
+            'https://www.google.com/search?q=dfir'
+            '&sxsrf=ADLYWILErLgXEV52cxUwWGAhHoGdPIVY9w%3A')
+
+        self.assertIn('ADLYWILErLgXEV52cxUwWGAhHoGdPIVY9w',
+                      [n.value for n in get_nodes_by_type(test, 'google.sxsrf')])
+        self.assertEqual([], get_nodes_by_type(test, 'timestamp.epoch-milliseconds'))
+
+    def test_non_numeric_sxsrf_timestamp_is_not_parsed(self):
+        """Values recovered from page source can carry a run-together second URL
+        after the milliseconds. That is not a timestamp."""
+
+        test = self.parse(
+            'https://www.google.com/search?q=dfir'
+            '&sxsrf=AM9HkKkFWLlX_hC63KqDpJwdH9M3JL7LZA%3A16957927058AAAAAZRPMUXuGEx')
+
+        self.assertIn('AM9HkKkFWLlX_hC63KqDpJwdH9M3JL7LZA',
+                      [n.value for n in get_nodes_by_type(test, 'google.sxsrf')])
+        self.assertEqual([], get_nodes_by_type(test, 'timestamp.epoch-milliseconds'))
+
+
 if __name__ == '__main__':
     unittest.main()
