@@ -157,7 +157,12 @@ def run(unfurl, node):
             return
 
     if node.data_type == 'url':
-        parsed_url = urllib.parse.urlparse(node.value)
+        try:
+            parsed_url = urllib.parse.urlparse(node.value)
+        except ValueError:
+            # urlparse rejects some values outright, such as brackets in the host that
+            # aren't an IPv6 literal ("evil[.]com"). Nothing here can be split out.
+            return
 
         if parsed_url.netloc:
             if parsed_url.scheme:
