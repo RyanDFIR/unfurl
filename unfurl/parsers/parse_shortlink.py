@@ -123,7 +123,8 @@ def expand_bitly_url(bitlink_id, api_key):
     r = requests.post(
         'https://api-ssl.bitly.com/v4/expand',
         data=json.dumps({'bitlink_id': f'bit.ly/{bitlink_id.rstrip("/")}'}),
-        headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {api_key}'})
+        headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {api_key}'},
+        timeout=3)
 
     if r.status_code == 200:
         return r.json()
