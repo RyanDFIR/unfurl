@@ -33,8 +33,11 @@ markup_re = re.compile(rf'{anchor_re.pattern}|<[^>]+>', re.IGNORECASE | re.DOTAL
 # A line break in hover text, in any of the forms an author might write.
 line_break_re = re.compile(r'<br\s*/?>', re.IGNORECASE)
 
-# Markup and citation brackets, neither of which a plain-text output can render.
-plain_text_strip_re = re.compile(r'<.*?>|\[.*?\]', re.DOTALL)
+# Markup, and citation links, which a plain-text output can't render. A citation is a link
+# whose whole text is bracketed ("[ref]"); it goes entirely, since with the link gone the
+# brackets are all that's left. Brackets anywhere else are content and stay: a hover can
+# quote a value that contains them, such as a defanged URL.
+plain_text_strip_re = re.compile(r'<a\b[^>]*>\s*\[[^\]]*\]\s*</a>|<.*?>', re.IGNORECASE | re.DOTALL)
 long_int_re = re.compile(r'\d{8,}')
 urlsafe_b64_re = re.compile(r'[A-Za-z0-9_\-]{8,}={0,2}')
 standard_b64_re = re.compile(r'[A-Za-z0-9+/]{8,}={0,2}')

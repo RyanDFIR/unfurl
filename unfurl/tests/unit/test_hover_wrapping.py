@@ -167,6 +167,12 @@ class TestStripHoverMarkup(unittest.TestCase):
         text = 'See the spec. <a href="https://example.com" target="_blank">[ref]</a>'
         self.assertEqual('See the spec.', strip_hover_markup(text))
 
+    def test_brackets_outside_a_citation_link_are_kept(self):
+        """Brackets can be the content itself, like the markers in a defanged URL."""
+
+        text = 'Replaced "<b>[.]</b>" with "<b>.</b>" <a href="https://example.com">[ref]</a>'
+        self.assertEqual('Replaced "[.]" with "."', strip_hover_markup(text))
+
     def test_wrapped_hover_survives_the_round_trip(self):
         """The regression: wrap_hover_text replaces a space with '<br>', so
         dropping the tag outright welds the words on either side together."""
