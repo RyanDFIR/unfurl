@@ -319,6 +319,27 @@ def decode_mac_absolute_time(seconds):
     }
 
 
+def decode_fbclid_seconds(seconds):
+    """Decode a timestamp field from a Facebook Click ID (fbclid).
+
+    fbclid timestamps are 4-byte counts of seconds since a reverse-engineered epoch
+    of 2024-01-01 20:29:36 UTC (FBCLID_EPOCH in parse_facebook), not since 1970.
+
+    """
+    from unfurl.parsers.parse_facebook import FBCLID_EPOCH
+
+    seconds = int(seconds)
+    unix_seconds = seconds + FBCLID_EPOCH
+    converted_ts = datetime.datetime.fromtimestamp(unix_seconds, tz=datetime.UTC)
+
+    return {
+        'data_type': 'timestamp.fbclid-seconds',
+        'display_type': f'fbclid seconds, counted from 2024-01-01 20:29:36 UTC '
+                        f'({seconds:,} + {FBCLID_EPOCH:,} = Unix {unix_seconds:,})',
+        'timestamp_value': str(converted_ts)
+    }
+
+
 def decode_mac_absolute_time_nanoseconds(nanoseconds):
     """Decode a numeric timestamp in Mac Absolute Time nanoseconds format to a human-readable timestamp.
 
@@ -445,9 +466,18 @@ def run(unfurl, node):
     if node.data_type in ('description', 'google.ei'):
         return
 
+    # fbclid fields are decoded with known types (App IDs, ad IDs, flags), so a
+    # large number among them is not a timestamp. Its real timestamps are handed
+    # off as fbclid-seconds nodes, which don't match this prefix.
+    if node.data_type.startswith('facebook.fbclid.'):
+        return
+
     # If the node is explicitly classified as a raw timestamp, use that type for the conversion
     elif node.data_type == 'epoch-seconds':
         new_timestamp = decode_epoch_seconds(node.value)
+
+    elif node.data_type == 'fbclid-seconds':
+        new_timestamp = decode_fbclid_seconds(node.value)
 
     elif node.data_type == 'epoch-centiseconds':
         new_timestamp = decode_epoch_centiseconds(node.value)

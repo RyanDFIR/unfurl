@@ -137,6 +137,7 @@ def run(unfurl, node):
         unfurl.add_to_queue(
             data_type='descriptor', key=None,
             value='Facebook Click ID',
-            hover='This URL was likely the result of clicking an external link on Facebook. <b>fbclid</b> is thought '
-                  'to be a unique parameter added by Facebook to outgoing links for analytics purposes.',
+            hover='This URL was likely the result of clicking an external link on Facebook or Instagram. '
+                  '<b>fbclid</b> is a click identifier Meta adds to outgoing links for ad attribution and '
+                  'analytics. Newer ones contain readable fields, including a timestamp.',
             parent_id=node.node_id, incoming_edge_config=utm_edge)
