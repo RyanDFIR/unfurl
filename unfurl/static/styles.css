@@ -392,7 +392,7 @@ h1 {
 
 .unfurl-tooltip .tip-label {
     font-weight: 600;
-    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .unfurl-tooltip .tip-edge {
@@ -407,7 +407,7 @@ h1 {
     color: #888888;
     font-size: 0.75rem;
     margin-top: 3px;
-    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 #unfurl_graph {

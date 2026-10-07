@@ -373,7 +373,9 @@
             nodeMap[n.id] = {
                 id: n.id,
                 label: (n.label || '').replace(/\n/g, ' '),
-                title: n.title ? n.title.replace(/<[^>]*>/g, '') : '',
+                // Hovers are wrapped by swapping a space for <br>; the tooltip does its
+                // own wrapping, so turn those back into spaces before dropping other tags
+                title: n.title ? n.title.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '') : '',
                 _edgeLabel: '',
                 children: [],
                 _hiddenChildren: null,
@@ -450,11 +452,18 @@
         // Tooltip
         var tooltip = document.getElementById('unfurl_tooltip');
 
+        // Labels carry raw pieces of the unfurled input (a query value can contain
+        // "<img onerror=...>"), so everything is escaped before it goes into innerHTML
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         function showTip(event, d) {
-            var lines = ['<span class="tip-label">' + d.data.label + '</span>'];
-            if (d.data._edgeLabel) lines.push('<span class="tip-edge">' + d.data._edgeLabel + '</span>');
+            var lines = ['<span class="tip-label">' + escapeHtml(d.data.label) + '</span>'];
+            if (d.data._edgeLabel) lines.push('<span class="tip-edge">' + escapeHtml(d.data._edgeLabel) + '</span>');
             if (d.data.title && d.data.title !== d.data.label)
-                lines.push('<span class="tip-title">' + d.data.title + '</span>');
+                lines.push('<span class="tip-title">' + escapeHtml(d.data.title) + '</span>');
             tooltip.innerHTML = lines.join('');
             tooltip.classList.add('visible');
         }

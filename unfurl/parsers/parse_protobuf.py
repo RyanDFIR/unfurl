@@ -263,7 +263,9 @@ def run(unfurl, node):
     if skip:
         return
 
-    if node.data_type.startswith(('uuid', 'hash')):
+    # fbclid parts are fully decoded by parse_facebook; guessing a protobuf out
+    # of their base64 produces garbage fields
+    if node.data_type.startswith(('uuid', 'hash', 'facebook.fbclid.')):
         return False
 
     hex_m = utils.hex_re.fullmatch(node.value)
