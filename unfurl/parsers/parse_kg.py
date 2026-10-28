@@ -13,10 +13,16 @@
 # limitations under the License.
 
 import logging
+import re
 
 import requests
 
 log = logging.getLogger(__name__)
+
+# Knowledge Graph IDs are a short lowercase token after /m/ (Freebase MIDs, like /m/050zjwr)
+# or /g/ (like /g/11c1xn_x4c). Matching only the prefix also sent whole URL paths to Google,
+# such as ChatGPT's /g/g-p-{project}/c/{conversation}.
+kg_id_re = re.compile(r'/[mg]/[0-9a-z_]{2,12}')
 
 kg_edge = {
     'color': {
@@ -31,7 +37,7 @@ def run(unfurl, node):
     if not unfurl.remote_lookups or not isinstance(node.value, str):
         return
 
-    if not node.value.startswith(('/m/', '/g/')):
+    if node.data_type.startswith('url') or not kg_id_re.fullmatch(node.value):
         return
 
     api_key = unfurl.get_api_key('google_kg')
@@ -45,8 +51,13 @@ def run(unfurl, node):
             params={'ids': node.value, 'limit': 10, 'key': api_key}, timeout=3)
         response.raise_for_status()
         response = response.json()
+    # The exception text from requests includes the request URL, API key and all, so log
+    # only the status code or the exception type.
+    except requests.HTTPError as e:
+        log.warning(f'Google Knowledge Graph lookup failed: HTTP {e.response.status_code}')
+        return
     except Exception as e:
-        log.warning(f'Google Knowledge Graph lookup failed: {e}')
+        log.warning(f'Google Knowledge Graph lookup failed: {type(e).__name__}')
         return
 
     for element in response.get('itemListElement', []):

@@ -85,6 +85,53 @@ class TestKnowledgeGraph(unittest.TestCase):
         self.assertEqual(len(kg_nodes), 0)
 
     @patch('unfurl.parsers.parse_kg.requests.get')
+    def test_kg_ignores_paths_that_only_start_like_an_id(self, mock_get):
+        """A URL path such as ChatGPT's /g/g-p-.../c/... is not a KG ID and must not be sent to Google."""
+        test = Unfurl()
+        test.remote_lookups = True
+        test.api_keys = {'google_kg': 'fake_key'}
+        test.add_to_queue(
+            data_type='url', key=None,
+            value='https://chatgpt.com/g/g-p-6a00000012348191a1b2c3d4e5f60718/c/'
+                  '6a0007d0-1234-83ec-9abc-0123456789ab')
+        test.add_to_queue(data_type='proto', key='2', value='/g/g-673b43dbe89081918262b99d6aa366dc')
+        test.add_to_queue(data_type='proto', key='2', value='/m/050zjwr/extra')
+        test.parse_queue()
+
+        mock_get.assert_not_called()
+
+    @patch('unfurl.parsers.parse_kg.requests.get')
+    def test_kg_lookup_accepts_g_ids(self, mock_get):
+        """/g/ IDs (with digits and underscores) are still looked up."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'itemListElement': [{'result': {'name': 'Example'}}]}
+        mock_get.return_value = mock_response
+
+        test = Unfurl()
+        test.remote_lookups = True
+        test.api_keys = {'google_kg': 'fake_key'}
+        test.add_to_queue(data_type='proto', key='2', value='/g/11c1xn_x4c')
+        test.parse_queue()
+
+        self.assertEqual(len(get_nodes_by_type(test, 'google.knowledge_graph')), 1)
+
+    @patch('unfurl.parsers.parse_kg.requests.get')
+    def test_kg_lookup_error_does_not_log_the_api_key(self, mock_get):
+        """requests puts the full URL, key included, in its exception text; the log must not."""
+        import requests
+        mock_get.side_effect = requests.ConnectionError(
+            'HTTPSConnectionPool: Max retries exceeded with url: /v1/entities:search?ids=%2Fm%2F050zjwr&key=SECRETKEY')
+
+        test = Unfurl()
+        test.remote_lookups = True
+        test.api_keys = {'google_kg': 'SECRETKEY'}
+        test.add_to_queue(data_type='proto', key='2', value='/m/050zjwr')
+        with self.assertLogs('unfurl.parsers.parse_kg', level='WARNING') as logs:
+            test.parse_queue()
+
+        self.assertNotIn('SECRETKEY', '\n'.join(logs.output))
+
+    @patch('unfurl.parsers.parse_kg.requests.get')
     def test_kg_lookup_empty_response(self, mock_get):
         """KG parser should handle empty API responses."""
         mock_response = MagicMock()
