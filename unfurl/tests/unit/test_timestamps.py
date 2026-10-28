@@ -58,6 +58,37 @@ class TestTimestampDecoders(unittest.TestCase):
         result = parse_timestamp.decode_postgresql(789004800123456)
         self.assertEqual(result['timestamp_value'], '2025-01-01 00:00:00.123456+00:00')
 
+    def test_counts_since_1601_keep_every_digit(self):
+        """Values counted from 1601 or earlier are converted exactly, at the source's precision.
+
+        These used to be divided down to float seconds, which needs more digits than a
+        double has: WebKit and FileTime values came out a few microseconds off, and a
+        WebKit millisecond value gained six digits (.646999 for .647).
+        """
+        cases = (
+            (parse_timestamp.decode_webkit, 13419217994913557,
+             '2026-03-29 00:33:14.913557+00:00'),
+            (parse_timestamp.decode_webkit_milliseconds, 13204814290647,
+             '2019-06-12 11:58:10.647+00:00'),
+            (parse_timestamp.decode_windows_filetime, 134911063021953929,
+             '2028-07-08 01:31:42.1953929+00:00'),
+            (parse_timestamp.decode_datetime_ticks, 638712864001234567,
+             '2025-01-01 00:00:00.1234567+00:00'),
+            (parse_timestamp.decode_uuid_time, 139549824001234567,
+             '2025-01-01 00:00:00.1234567+00:00'),
+        )
+        for decoder, value, expected in cases:
+            with self.subTest(decoder=decoder.__name__):
+                self.assertEqual(decoder(value)['timestamp_value'], expected)
+
+    def test_whole_seconds_have_no_fraction(self):
+        self.assertEqual(
+            parse_timestamp.decode_windows_filetime(133801632000000000)['timestamp_value'],
+            '2025-01-01 00:00:00+00:00')
+        self.assertEqual(
+            parse_timestamp.decode_webkit_milliseconds(13380163200000)['timestamp_value'],
+            '2025-01-01 00:00:00+00:00')
+
 
 class TestTimestampDetection(unittest.TestCase):
     """Tests of the automatic timestamp detection on parsed values."""
@@ -126,7 +157,7 @@ class TestTimestampDetection(unittest.TestCase):
 
         matches = get_nodes_by_type(test, 'timestamp.windows-filetime-hex')
         self.assertEqual(len(matches), 1)
-        self.assertIn('2016-01-23 19:32:28.702751', matches[0].label)
+        self.assertIn('2016-01-23 19:32:28.7027500+00:00', matches[0].label)
         self.assertIn('Windows FileTime (hex)', matches[0].hover)
 
     def test_detects_webkit_milliseconds(self):

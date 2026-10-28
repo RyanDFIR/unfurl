@@ -160,16 +160,24 @@ def decode_epoch_microseconds(microseconds):
     }
 
 
-def format_nanosecond_timestamp(base_dt, nanoseconds):
-    """Convert an integer nanosecond offset from base_dt to a timestamp string.
+WEBKIT_EPOCH = datetime.datetime(1601, 1, 1, tzinfo=datetime.UTC)
+DOTNET_EPOCH = datetime.datetime(1, 1, 1, tzinfo=datetime.UTC)
 
-    Python's datetime only holds microseconds, so the 9-digit fractional part is
-    rendered manually to preserve the full nanosecond precision of the source value.
+
+def format_fractional_timestamp(base_dt, count, digits):
+    """Convert an integer count of 10**-digits second units from base_dt to a timestamp string.
+
+    The split into whole seconds and a fraction is done in integers. Dividing a count
+    since 1601 down to float seconds needs more digits than a double holds, which put
+    WebKit and FileTime values a few microseconds off. The fractional part is rendered
+    manually so the output carries exactly the source's precision: datetime only holds
+    microseconds, so FileTime's 7th digit and nanoseconds would otherwise be lost, and a
+    millisecond value would otherwise gain three digits it doesn't have.
     """
-    seconds, frac_ns = divmod(int(nanoseconds), 1000000000)
+    seconds, fraction = divmod(int(count), 10 ** digits)
     converted_dt = base_dt + datetime.timedelta(seconds=seconds)
-    if frac_ns:
-        return f'{converted_dt:%Y-%m-%d %H:%M:%S}.{frac_ns:09d}+00:00'
+    if fraction:
+        return f'{converted_dt:%Y-%m-%d %H:%M:%S}.{fraction:0{digits}d}+00:00'
     return str(converted_dt)
 
 
@@ -191,8 +199,8 @@ def decode_epoch_nanoseconds(nanoseconds):
     return {
         'data_type': 'timestamp.epoch-nanoseconds',
         'display_type': 'Epoch nanoseconds',
-        'timestamp_value': format_nanosecond_timestamp(
-            datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC), nanoseconds)
+        'timestamp_value': format_fractional_timestamp(
+            datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC), nanoseconds, 9)
     }
 
 
@@ -208,12 +216,10 @@ def decode_webkit(microseconds):
       2030: 13537929600000000
 
     """
-    converted_ts = datetime.datetime.fromtimestamp((float(microseconds) / 1000000) - 11644473600, tz=datetime.UTC)
-
     return {
         'data_type': 'timestamp.webkit',
         'display_type': 'Webkit',
-        'timestamp_value': str(converted_ts)
+        'timestamp_value': format_fractional_timestamp(WEBKIT_EPOCH, microseconds, 6)
     }
 
 
@@ -230,12 +236,10 @@ def decode_webkit_milliseconds(milliseconds):
       2030: 13537929600000
 
     """
-    converted_ts = datetime.datetime.fromtimestamp((float(milliseconds) / 1000) - 11644473600, tz=datetime.UTC)
-
     return {
         'data_type': 'timestamp.webkit-milliseconds',
         'display_type': 'Webkit milliseconds',
-        'timestamp_value': str(converted_ts)
+        'timestamp_value': format_fractional_timestamp(WEBKIT_EPOCH, milliseconds, 3)
     }
 
 
@@ -253,12 +257,10 @@ def decode_windows_filetime(intervals):
       2065: 146424672000000000
 
     """
-    converted_ts = datetime.datetime.fromtimestamp((float(intervals) / 10000000) - 11644473600, tz=datetime.UTC)
-
     return {
         'data_type': 'timestamp.windows-filetime',
         'display_type': 'Windows FileTime',
-        'timestamp_value': str(converted_ts)
+        'timestamp_value': format_fractional_timestamp(WEBKIT_EPOCH, intervals, 7)
     }
 
 
@@ -282,14 +284,33 @@ def decode_datetime_ticks(ticks):
       2038: 642815136000000000
 
     """
-    ticks = int(ticks)
-    seconds = (ticks - 621355968000000000) / 10000000
-    converted_ts = datetime.datetime.fromtimestamp(seconds, tz=datetime.UTC)
-
     return {
         'data_type': 'timestamp.datetime-ticks',
         'display_type': 'DateTime ticks',
-        'timestamp_value': str(converted_ts)
+        'timestamp_value': format_fractional_timestamp(DOTNET_EPOCH, ticks, 7)
+    }
+
+
+def decode_uuid_time(intervals):
+    """Decode the 60-bit timestamp of a version 1 or 6 UUID to a human-readable timestamp.
+
+    A UUID timestamp (18 digits) is the number of 100-nanosecond intervals since 00:00 UTC on 15 October 1582, the
+    date the Gregorian calendar took effect (the "Gregorian epoch" in RFC 9562).
+
+    ref: https://www.rfc-editor.org/rfc/rfc9562#name-uuid-version-1
+
+    Useful values for ranges (all Jan-1 00:00:00):
+      1970: 122192928000000000
+      2015: 136393632000000000
+      2025: 139549824000000000
+      2030: 141127488000000000
+
+    """
+    return {
+        'data_type': 'timestamp.uuid-time',
+        'display_type': 'UUID time (100-nanosecond intervals since the Gregorian epoch, 1582-10-15)',
+        'timestamp_value': format_fractional_timestamp(
+            datetime.datetime(1582, 10, 15, tzinfo=datetime.UTC), intervals, 7)
     }
 
 
@@ -359,8 +380,8 @@ def decode_mac_absolute_time_nanoseconds(nanoseconds):
     return {
         'data_type': 'timestamp.mac-absolute-time-nanoseconds',
         'display_type': 'Mac Absolute Time nanoseconds (iOS 11+)',
-        'timestamp_value': format_nanosecond_timestamp(
-            datetime.datetime(2001, 1, 1, tzinfo=datetime.UTC), nanoseconds)
+        'timestamp_value': format_fractional_timestamp(
+            datetime.datetime(2001, 1, 1, tzinfo=datetime.UTC), nanoseconds, 9)
     }
 
 
@@ -472,6 +493,11 @@ def run(unfurl, node):
     if node.data_type.startswith('facebook.fbclid.'):
         return
 
+    # ETag fields are typed sizes, inode numbers and part counts. Their mtimes are handed
+    # off as epoch-* nodes, which don't match this prefix.
+    if node.data_type.startswith('etag.'):
+        return
+
     # If the node is explicitly classified as a raw timestamp, use that type for the conversion
     elif node.data_type == 'epoch-seconds':
         new_timestamp = decode_epoch_seconds(node.value)
@@ -511,6 +537,9 @@ def run(unfurl, node):
 
     elif node.data_type == 'datetime-ticks':
         new_timestamp = decode_datetime_ticks(node.value)
+
+    elif node.data_type == 'uuid-time':
+        new_timestamp = decode_uuid_time(node.value)
 
     elif node.data_type == 'mac-absolute-time':
         new_timestamp = decode_mac_absolute_time(node.value)
