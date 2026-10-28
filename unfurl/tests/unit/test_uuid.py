@@ -22,7 +22,7 @@ class TestUuid(unittest.TestCase):
         self.assertEqual('The Node ID in this UUID is random', descriptor_nodes[0].label)
 
         # confirm the time is parsed correctly
-        timestamp_nodes = get_nodes_by_type(test, 'timestamp.epoch-milliseconds')
+        timestamp_nodes = get_nodes_by_type(test, 'timestamp.uuid-time')
         self.assertEqual(len(timestamp_nodes), 1)
         self.assertIn('1582-10-15 00:00:00', timestamp_nodes[0].label)
 
@@ -40,7 +40,7 @@ class TestUuid(unittest.TestCase):
         self.assertEqual('MAC address: 08:00:20:0C:9A:66', mac_nodes[0].label)
 
         # confirm the time is parsed correctly
-        timestamp_nodes = get_nodes_by_type(test, 'timestamp.epoch-milliseconds')
+        timestamp_nodes = get_nodes_by_type(test, 'timestamp.uuid-time')
         self.assertEqual(len(timestamp_nodes), 1)
         self.assertIn('2019-11-22 22:01:28.775', timestamp_nodes[0].label)
 
@@ -85,7 +85,7 @@ class TestUuid(unittest.TestCase):
         self.assertEqual('Oracle Corporation', vendor_nodes[0].value)
 
         # confirm the timestamp matches the v1 equivalent
-        timestamp_nodes = get_nodes_by_type(test, 'timestamp.epoch-milliseconds')
+        timestamp_nodes = get_nodes_by_type(test, 'timestamp.uuid-time')
         self.assertEqual(len(timestamp_nodes), 1)
         self.assertIn('2019-11-22 22:01:28.775', timestamp_nodes[0].label)
 

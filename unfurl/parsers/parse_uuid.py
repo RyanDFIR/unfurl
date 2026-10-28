@@ -48,11 +48,10 @@ def run(unfurl, node):
                 parent_id=node.node_id, incoming_edge_config=uuid_edge)
 
             # Timestamp is 60-bits, the number of 100-nanosecond intervals since midnight 15 October 1582 Coordinated
-            # Universal Time (UTC). The offset to the Unix epoch is 12219292800000 milliseconds. Divide ts by 10000
-            # to go from 100-ns intervals to milliseconds.x
-            timestamp = u.time/10000 - 12219292800000
+            # Universal Time (UTC). It is passed on as stored; converting it to float Unix milliseconds lost precision.
+            timestamp = u.time
             unfurl.add_to_queue(
-                data_type='epoch-milliseconds', key=None, value=timestamp, label=f'Time generated: {timestamp}',
+                data_type='uuid-time', key=None, value=timestamp, label=f'Time generated: {timestamp}',
                 parent_id=node.node_id, incoming_edge_config=uuid_edge)
 
             # Detection for randomly generated MACs (random 48-bit number with its eighth bit set to 1 as
@@ -135,10 +134,9 @@ def run(unfurl, node):
 
             v6_hex = u.hex
             ts_hex = v6_hex[0:8] + v6_hex[8:12] + v6_hex[13:16]
-            v1_timestamp = int(ts_hex, 16)
-            timestamp = v1_timestamp / 10000 - 12219292800000
+            timestamp = int(ts_hex, 16)
             unfurl.add_to_queue(
-                data_type='epoch-milliseconds', key=None, value=timestamp, label=f'Time generated: {timestamp}',
+                data_type='uuid-time', key=None, value=timestamp, label=f'Time generated: {timestamp}',
                 parent_id=node.node_id, incoming_edge_config=uuid_edge)
 
             if (u.node >> 40) & 0x01 == 1:
