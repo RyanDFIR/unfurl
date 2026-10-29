@@ -94,7 +94,8 @@ def decode_cisco_type_7(encoded_text):
 
 def run(unfurl, node):
 
-    if node.data_type.startswith('uuid'):
+    # An ETag's hash is of a response body or of S3 part hashes, never of a plaintext worth looking up.
+    if node.data_type.startswith(('uuid', 'etag')):
         return
 
     if node.data_type.startswith('hash'):
