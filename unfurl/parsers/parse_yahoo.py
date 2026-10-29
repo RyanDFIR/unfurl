@@ -2,7 +2,7 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License athttps://channel9.msdn.com/Shows/Going+Deep?page=20
+# You may obtain a copy of the License at
 #
 #     https://www.apache.org/licenses/LICENSE-2.0
 #
@@ -55,8 +55,8 @@ def run(unfurl, node):
                 }
                 value = imgc_mappings.get(node.value, 'Unknown')
                 unfurl.add_to_queue(
-                    data_type='descriptor', key=None, value=f'Image Size: {value}',
-                    hover='Yahoo Image Search Size', parent_id=node.node_id, incoming_edge_config=yahoo)
+                    data_type='descriptor', key=None, value=f'Image Color: {value}',
+                    hover='Yahoo Image Search Color', parent_id=node.node_id, incoming_edge_config=yahoo)
 
             elif node.key == 'imgsz':
                 imgsz_mappings = {
