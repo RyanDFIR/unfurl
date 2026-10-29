@@ -99,7 +99,8 @@ def run(unfurl, node):
         return
 
     if not unfurl.preceding_domain_matches(node, 'safelinks.protection.outlook.com'):
-        return
+        if not unfurl.preceding_domain_matches(node, 'safelink.emails.azure.net'):
+            return
 
     if node.key == 'url':
         unfurl.add_to_queue(
@@ -107,6 +108,17 @@ def run(unfurl, node):
             value='Wrapped destination URL (decoded by Safe Links)',
             hover='Microsoft Defender Safe Links wraps this destination URL and '
                   'routes clicks through <code>*.safelinks.protection.outlook.com</code> '
+                  'so the destination can be scanned at click-time. The destination is '
+                  'unfurled separately by the generic URL parser.',
+            parent_id=node.node_id, incoming_edge_config=safelinks_edge)
+        return
+
+    if node.key == 'destination':
+        unfurl.add_to_queue(
+            data_type='descriptor', key=None,
+            value='Wrapped destination URL (decoded by Safe Links)',
+            hover='Microsoft Azure Safe Links wraps this destination URL and '
+                  'routes clicks through <code>*.safelink.emails.azure.net</code> '
                   'so the destination can be scanned at click-time. The destination is '
                   'unfurled separately by the generic URL parser.',
             parent_id=node.node_id, incoming_edge_config=safelinks_edge)
@@ -208,5 +220,15 @@ def run(unfurl, node):
             value='Reserved Safe Links parameter',
             hover='Reserved parameter set by Microsoft Defender Safe Links; '
                   'purpose is not publicly documented.',
+            parent_id=node.node_id, incoming_edge_config=safelinks_edge)
+        return
+
+    if node.key == 'p':
+        unfurl.add_to_queue(
+            data_type='descriptor', key=None,
+            value='Azure Safe Links Parameters',
+            hover='Always present in observed Azure Safe Links URLs. The value '
+                  'is a base64 blob containing 2-3 parameters; purpose is not'
+                  'publicly documented.',
             parent_id=node.node_id, incoming_edge_config=safelinks_edge)
         return
