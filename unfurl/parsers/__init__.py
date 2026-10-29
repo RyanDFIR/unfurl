@@ -10,6 +10,7 @@ __all__ = [
     "parse_dns",
     "parse_domain",
     "parse_dropbox",
+    "parse_etag",
     "parse_facebook",
     "parse_duckduckgo",
     "parse_fernet",
