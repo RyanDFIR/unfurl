@@ -16,6 +16,7 @@ import logging
 
 import requests
 from unfurl import utils
+from unfurl.parsers import parse_chatgpt
 
 log = logging.getLogger(__name__)
 
@@ -157,6 +158,10 @@ def run(unfurl, node):
         if len(node.value) == 32 and node.value[12] == '4':
             # UUIDv4 is very common and it's the same length as an MD5 hash. This might filter out some legitimate
             # MD5 hashes, but it will filter out many more UUIDs. I think the tradeoff is worth it for Unfurl.
+            return
+
+        if parse_chatgpt.claims_hex_value(unfurl, node):
+            # An undashed ChatGPT object ID (notification_id, /s/{hex}, ...) in a ChatGPT URL
             return
 
         hash_name, hash_hover, new_node_value = None, None, None

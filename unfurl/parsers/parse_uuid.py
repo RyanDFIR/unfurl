@@ -15,6 +15,8 @@
 import re
 import uuid
 
+from unfurl.parsers import parse_chatgpt
+
 uuid_edge = {
     'color': {
         'color': 'orange'
@@ -39,6 +41,11 @@ def run(unfurl, node):
                 extra_options={'widthConstraint': {'maximum': 500}})
 
     elif node.data_type == 'uuid':
+        # A known vendor layout (ChatGPT's UUIDv8 IDs, and its image file IDs that look like
+        # v5-v8 with a zeroed timestamp) is decoded by that vendor's parser instead.
+        if parse_chatgpt.claims_uuid(unfurl, node):
+            return
+
         u = uuid.UUID(node.value)
         # TODO: reference: http://www.mahonri.info/cgi/uuid.cgi
         if u.version == 1:

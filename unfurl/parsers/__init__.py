@@ -5,6 +5,7 @@ __all__ = [
     "parse_bing",
     "parse_brave",
     "parse_bluesky",
+    "parse_chatgpt",
     "parse_compressed",
     "parse_discord",
     "parse_dns",
