@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
+from unfurl import utils
 import re
 
 bing_edge = {
@@ -315,27 +315,29 @@ def run(unfurl, node):
             elif node.key == 'u' and node.value[:6] == 'a1aHR0':
                 unfurl.add_to_queue(
                     data_type='base64', key='Redirect URL', value=node.value[2:],
+                    hover='The redirect URL is base64-encoded and prepended with <code>a1</code>',
                     parent_id=node.node_id, incoming_edge_config=bing_edge)
 
             # Tend to be seen in URLs starting with `bing.com/ck/a?!&&...`
             elif node.key == 'p':
-                decoded = utils.try_urlsafe_b64_decode(node.value)
+                b64_data = re.sub(r'^(?:[0-9a-f]{2})+', '', node.value)
+                decoded = utils.try_urlsafe_b64_decode(b64_data)
                 if decoded:
-                    decoded = decoded.split('&')
+                    decoded = decoded.decode('utf-8').lstrip('&').split('&')
                     for p in decoded:
                         if p[:5] == 'imts=':
                             unfurl.add_to_queue(
-                                data_type='epoch-seconds', key='imts', value=node.value[5:],
+                                data_type='epoch-seconds', key='imts', value=p[5:],
                                 parent_id=node.node_id, incoming_edge_config=bing_edge)
                         elif p[:6] == 'iguid=':
                             unfurl.add_to_queue(
-                                data_type='uuid', key='iguid', value=node.value[6:],
+                                data_type='uuid', key='iguid', value=p[6:],
                                 parent_id=node.node_id, incoming_edge_config=bing_edge)
                         elif p[:6] == 'insid=':
                             unfurl.add_to_queue(
-                                data_type='descriptor', key=None, value=f'insid: {node.value[6:]}',
+                                data_type='descriptor', key=None, value=f'insid: {p[6:]}',
                                 parent_id=node.node_id, incoming_edge_config=bing_edge)
                         else:
                             unfurl.add_to_queue(
-                                data_type='descriptor', key=None, value=node.value,
+                                data_type='descriptor', key=None, value=p,
                                 parent_id=node.node_id, incoming_edge_config=bing_edge)

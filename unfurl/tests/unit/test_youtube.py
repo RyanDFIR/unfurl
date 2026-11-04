@@ -20,6 +20,8 @@ class TestYouTube(unittest.TestCase):
         # Test query parsing
         descriptor_labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
         self.assertIn('Video ID: LnhSTZgzKuY', descriptor_labels)
+        self.assertIn('Playlist ID: PLlFGZ98XmfGfV6RAY9fQSeRfyIuhVGSdm', descriptor_labels)
+        self.assertIn('Video Index in Playlist: 2', descriptor_labels)
         self.assertIn('Video will start playing at 42 seconds', descriptor_labels)
 
         # is processing finished empty
@@ -38,6 +40,7 @@ class TestYouTube(unittest.TestCase):
         # Test query parsing
         descriptor_labels = [n.label for n in get_nodes_by_type(test, 'descriptor')]
         self.assertIn('Video ID: LnhSTZgzKuY', descriptor_labels)
+        self.assertIn('Playlist ID: PLlFGZ98XmfGfV6RAY9fQSeRfyIuhVGSdm', descriptor_labels)
         self.assertIn('Video will start playing at 05:01 (mm:ss)', descriptor_labels)
 
         # is processing finished empty
