@@ -128,6 +128,17 @@ google_kg =
 external destinations, including third-party APIs (VirusTotal, Bitly, and Google Knowledge 
 Graph). It is `false` by default, and the API keys are only used when it is enabled.
 
+Expanding a short link means requesting the link itself, so with lookups enabled the input
+decides where some requests go. Two limits apply to those:
+
+- Unfurl only requests hosts on the public internet. A link whose host is an internal name
+  or resolves to a private, loopback, or link-local address is not requested. If an HTTP
+  proxy is configured the proxy does the name resolution, so make sure it cannot reach
+  networks that Unfurl's users should not.
+- One input can trigger at most 10 link expansions.
+
+A link that is skipped for either reason says so in its hover text.
+
 ### Setting your own values
 
 `unfurl.ini` is tracked in git as a template, so it ships with empty API keys. Rather

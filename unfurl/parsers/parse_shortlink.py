@@ -18,6 +18,9 @@ import json
 
 from bs4 import BeautifulSoup
 
+from unfurl import safe_http
+from unfurl.parsers import parse_domain
+
 log = logging.getLogger(__name__)
 
 
@@ -189,7 +192,9 @@ REDIRECT_STATUS_CODES = (301, 302, 303, 307, 308)
 def _location_header_from(url):
     """GET `url` without following redirects and return its Location header, or {}."""
 
-    r = requests.get(url, allow_redirects=False, timeout=3)
+    # Not requests.get(): where this request goes is up to the input, so it is only made
+    # if the host is on the public internet. See unfurl/safe_http.py.
+    r = safe_http.get(url, timeout=3)
 
     if r.status_code in REDIRECT_STATUS_CODES:
         return r.headers['Location']
@@ -230,6 +235,82 @@ def expand_full_url_via_redirect_header(url):
     return _location_header_from(url)
 
 
+def could_be_a_public_shortener(hostname):
+    """Whether an unrecognized host is at least a name on the public internet.
+
+    The length guess at the end of run() fires on hosts nothing else recognizes, and
+    plenty of short hosts are not shorteners or even public: "vault", "intra", "db",
+    "127.1", "10.1". Asking those for a redirect is how a submitted URL reaches into the
+    network Unfurl is running on. A shortener has to be a registrable domain under a
+    real public suffix, so anything that is not one is not worth a guess.
+
+    This decides only whether to guess. Whether a request may be made at all is decided
+    again, from the addresses the host resolves to, in unfurl/safe_http.py.
+    """
+
+    if parse_domain.psl is None:
+        # Without the suffix list there is no telling "a.io" from "a.internal"; with
+        # nothing to go on, do not guess.
+        return False
+
+    if safe_http.looks_like_ip_address(hostname):
+        return False
+
+    # strict: a suffix that is not on the list ("corp", "local", "internal") is not
+    # treated as a TLD, so the host has no registrable domain and this returns None.
+    registrable_domain = parse_domain.psl.get_sld(hostname, strict=True)
+    if not registrable_domain:
+        return False
+
+    # A bare public suffix ("co.uk") comes back as itself; nothing is registered there.
+    return registrable_domain != parse_domain.psl.get_tld(hostname, strict=True)
+
+
+def expand(unfurl, node, service, expander, *args):
+    """Run one link expansion for `node`, or explain on the node why it was not run.
+
+    Every expansion in this parser goes through here, so the three ways one can be
+    declined are handled in one place and all read the same way to an analyst:
+
+    - This input already asked for the same thing. The earlier answer is reused, so a
+      link that appears twice costs one request, not two.
+    - This input has used up its expansions. See Unfurl.take_link_expansion().
+    - The link's host is not on the public internet. See unfurl/safe_http.py.
+
+    The last two leave a note in the node's hover. The link is still in the graph, and
+    without the note a link Unfurl declined to follow would look exactly like one it
+    followed and found nothing behind.
+
+    `service` names what is being asked ("redirect", "bitly", ...). It keeps answers
+    from different services apart when they are given the same short code.
+    """
+
+    key = (service,) + args
+    if key in unfurl.link_expansion_results:
+        return unfurl.link_expansion_results[key]
+
+    if not unfurl.take_link_expansion():
+        unfurl.add_hover_note(
+            node,
+            f'Unfurl did not try to expand this link. This input has already used all '
+            f'{unfurl.link_expansion_limit} of the link expansions allowed for a single '
+            f'input, so no request was made for this one.')
+        return {}
+
+    try:
+        result = expander(*args)
+    except safe_http.RefusedDestination as refusal:
+        log.info(f'Not expanding node {node.node_id}: {refusal.reason}')
+        unfurl.add_hover_note(
+            node,
+            f'Unfurl did not try to expand this link, because {refusal.reason}. '
+            f'No request was made.')
+        result = {}
+
+    unfurl.link_expansion_results[key] = result
+    return result
+
+
 def run(unfurl, node):
     if not unfurl.remote_lookups:
         return
@@ -241,7 +322,8 @@ def run(unfurl, node):
     # this works.
     if node.data_type == 'url.query.pair' and node.key == 'code':
         if unfurl.preceding_domain_matches(node, 'linkedin.com'):
-            expanded_url = parse_linkedin_slink_url(node.value)
+            expanded_url = expand(
+                unfurl, node, 'linkedin', parse_linkedin_slink_url, node.value)
             if expanded_url:
                 unfurl.add_to_queue(
                     data_type='url', key=None, value=expanded_url,
@@ -253,7 +335,8 @@ def run(unfurl, node):
     # Substack inserts a redirect
     if 'substack.com' == preceding_domain and node.key == 2 and \
             unfurl.check_sibling_nodes(node, data_type='url.path.segment', key=1, value='redirect'):
-        expanded_url = expand_url_via_redirect_header('https://substack.com/redirect/', node.value)
+        expanded_url = expand(
+            unfurl, node, 'redirect', expand_url_via_redirect_header, 'https://substack.com/redirect/', node.value)
 
         if expanded_url:
             unfurl.add_to_queue(
@@ -270,7 +353,8 @@ def run(unfurl, node):
         return
 
     if 'lnkd.in' == preceding_domain:
-        expanded_url = parse_linkedin_slink_url(short_code)
+        expanded_url = expand(
+            unfurl, node, 'linkedin', parse_linkedin_slink_url, short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -280,7 +364,8 @@ def run(unfurl, node):
         return
 
     if 'v.gd' == preceding_domain:
-        expanded_url = expand_vdg_url(short_code)
+        expanded_url = expand(
+            unfurl, node, 'v.gd', expand_vdg_url, short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -290,7 +375,8 @@ def run(unfurl, node):
 
     bitly_domains = ['bit.ly', 'bitly.com', 'j.mp']
     if any(unfurl.preceding_domain_matches(node, d) for d in bitly_domains):
-        expanded_info = expand_bitly_url(short_code, unfurl.get_api_key('bitly'))
+        expanded_info = expand(
+            unfurl, node, 'bitly', expand_bitly_url, short_code, unfurl.get_api_key('bitly'))
 
         if not expanded_info:
             return
@@ -357,7 +443,8 @@ def run(unfurl, node):
 
     for redirect_expand in redirect_expands:
         if redirect_expand['domain'] == preceding_domain:
-            expanded_url = expand_url_via_redirect_header(redirect_expand['base_url'], short_code)
+            expanded_url = expand(
+                unfurl, node, 'redirect', expand_url_via_redirect_header, redirect_expand['base_url'], short_code)
             if expanded_url:
                 unfurl.add_to_queue(
                     data_type='url', key=None, value=expanded_url,
@@ -377,7 +464,8 @@ def run(unfurl, node):
         full_url = unfurl.find_preceding_url(node)
 
         if full_url:
-            expanded_url = expand_full_url_via_redirect_header(full_url)
+            expanded_url = expand(
+                unfurl, node, 'redirect-full', expand_full_url_via_redirect_header, full_url)
             if expanded_url:
                 unfurl.add_to_queue(
                     data_type='url', key=None, value=expanded_url,
@@ -391,7 +479,8 @@ def run(unfurl, node):
         return
 
     if preceding_domain in additional_shortener_domains:
-        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
+        expanded_url = expand(
+            unfurl, node, 'redirect', expand_url_via_redirect_header, f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -409,7 +498,8 @@ def run(unfurl, node):
     # for every domain shorter than eight characters, which is most shorteners.
     misp_shortener_domains = unfurl.known_domain_lists['List of known URL Shorteners domains'].list
     if preceding_domain in misp_shortener_domains:
-        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
+        expanded_url = expand(
+            unfurl, node, 'redirect', expand_url_via_redirect_header, f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
@@ -431,9 +521,15 @@ def run(unfurl, node):
     # popular enough to land in one is a destination people visit; a shortener that
     # popular (t.co, bit.ly, youtu.be) is already in the MISP list or the table above.
     # Only the tighter lists count -- see Unfurl.TOP_SITES_LIST_PREFIXES.
+    #
+    # It is also limited to hosts that could be a public shortener at all, which leaves
+    # out IP addresses and names that only mean something on a private network. See
+    # could_be_a_public_shortener().
     if preceding_domain and len(preceding_domain) < 8 \
-            and not unfurl.domain_in_top_sites_list(preceding_domain):
-        expanded_url = expand_url_via_redirect_header(f'https://{preceding_domain}/', short_code)
+            and not unfurl.domain_in_top_sites_list(preceding_domain) \
+            and could_be_a_public_shortener(preceding_domain):
+        expanded_url = expand(
+            unfurl, node, 'redirect', expand_url_via_redirect_header, f'https://{preceding_domain}/', short_code)
         if expanded_url:
             unfurl.add_to_queue(
                 data_type='url', key=None, value=expanded_url,
