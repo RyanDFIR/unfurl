@@ -33,6 +33,8 @@ from unittest import mock
 import requests
 from requests.structures import CaseInsensitiveDict
 
+from unfurl import safe_http
+
 
 class FakeResponse:
     """A stand-in for requests.Response covering what Unfurl's parsers touch.
@@ -95,23 +97,45 @@ def routed_get(routes, default=None):
     return fake_get, calls
 
 
-def patch_requests_get(routes, default=None):
-    """Context manager patching requests.get with a routed fake.
+# What every hostname resolves to under patch_requests_get, unless a test says otherwise.
+# 93.184.216.34 is a public address, so the destination check in unfurl.safe_http passes
+# as it would for a real shortener.
+PUBLIC_ADDRESS = '93.184.216.34'
+
+
+def patch_requests_get(routes, default=None, resolves_to=None):
+    """Context manager patching Unfurl's outbound GETs with a routed fake.
 
     Yields the list of requested URLs, so a test can assert on what was called -- and,
     just as usefully, on what was not.
+
+    Two ways out are covered: requests.get, and unfurl.safe_http, which short-link
+    expansion uses. For safe_http only its two contacts with the outside are replaced,
+    the DNS lookup and the send, so the destination check between them still runs in
+    every test. `resolves_to` maps a hostname to the list of addresses the fake DNS
+    returns for it; any other hostname resolves to PUBLIC_ADDRESS.
     """
 
     fake_get, calls = routed_get(routes, default=default)
+    resolves_to = resolves_to or {}
+
+    def fake_resolve_host(hostname, port):
+        return resolves_to.get(hostname, [PUBLIC_ADDRESS])
 
     class _Patch:
         def __enter__(self):
-            self._patcher = mock.patch.object(requests, 'get', side_effect=fake_get)
-            self._patcher.start()
+            self._patchers = [
+                mock.patch.object(requests, 'get', side_effect=fake_get),
+                mock.patch.object(safe_http, '_send', side_effect=fake_get),
+                mock.patch.object(safe_http, 'resolve_host', side_effect=fake_resolve_host),
+            ]
+            for patcher in self._patchers:
+                patcher.start()
             return calls
 
         def __exit__(self, *exc_info):
-            self._patcher.stop()
+            for patcher in self._patchers:
+                patcher.stop()
             return False
 
     return _Patch()

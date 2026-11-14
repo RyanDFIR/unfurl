@@ -167,6 +167,11 @@ class Unfurl:
         # How many times one (data_type, value) may appear along a single line of
         # ancestry before Unfurl stops expanding it. See find_repeated_ancestor().
         self.max_repeated_ancestors = 2
+        # How many requests one input may cause in order to expand the links inside it,
+        # and the answers already fetched. See take_link_expansion().
+        self.link_expansion_limit = 10
+        self.link_expansions_made = 0
+        self.link_expansion_results = {}
         self.stash = {}
 
         config = load_config()
@@ -670,6 +675,38 @@ class Unfurl:
         self.edges = []
         self.total_nodes = 0
         self.next_id = 1
+        self.link_expansions_made = 0
+        self.link_expansion_results = {}
+
+    def take_link_expansion(self):
+        """Claim one of this input's link-expansion requests; False if none are left.
+
+        Expanding a short link costs a request, and one input can carry many links:
+        sixty URLs packed into one query string used to mean sixty requests, made one
+        after another with a timeout each. That let a single submission hold a shared
+        instance for minutes, or use it to send traffic at someone else. A real URL has
+        a handful of links in it at most, so a small budget costs an analyst nothing.
+
+        Only link expansion is counted. Lookups about a value (a hash on VirusTotal, an
+        ID on Knowledge Graph) are not.
+        """
+
+        if self.link_expansions_made >= self.link_expansion_limit:
+            return False
+
+        self.link_expansions_made += 1
+        return True
+
+    @staticmethod
+    def add_hover_note(node, note):
+        """Append a note to a node that already exists, below whatever hover it has.
+
+        For a parser explaining why it did not do something to this node. The wording
+        is a paragraph of its own, separated the same way the cycle note in parse() is.
+        """
+
+        note = utils.wrap_hover_text(note)
+        node.hover = f'{node.hover}<br><br>{note}' if node.hover else note
 
     @staticmethod
     def transform_node(node):

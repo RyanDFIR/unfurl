@@ -1,7 +1,10 @@
+from unfurl import safe_http
 from unfurl.core import Unfurl
 from unfurl.parsers import parse_shortlink
 from unfurl.tests.http_mocks import FakeResponse, patch_requests_get, redirect
+from unittest import mock
 import unittest
+import urllib.parse
 
 
 def find_node(unfurl_instance, **criteria):
@@ -468,6 +471,200 @@ class TestFindPrecedingUrl(unittest.TestCase):
 
         root = test.nodes[1]
         self.assertEqual('', test.find_preceding_url(root))
+
+
+def path_node(unfurl_instance, value):
+    return find_node(unfurl_instance, data_type='url.path', value=value)
+
+
+class TestExpansionStaysOnThePublicInternet(unittest.TestCase):
+    """Expanding a link must not turn into a request aimed at Unfurl's own network.
+
+    The length guess used to request any unrecognized host under eight characters, so
+    "https://127.1/admin" or "https://vault/v1/..." submitted to a shared instance made
+    that instance request its own loopback or an internal service.
+    """
+
+    # An unrecognized short domain: in neither the MISP shortener list nor a top-sites
+    # list, so the only thing that can pick it up is the length guess.
+    UNKNOWN_SHORT_DOMAIN = 'qzx.io'
+
+    def unfurl_url(self, url, resolves_to=None):
+        with patch_requests_get({}, resolves_to=resolves_to) as calls:
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value=url)
+            test.parse_queue()
+        return test, calls
+
+    def test_hosts_that_cannot_be_public_shorteners_are_not_guessed(self):
+        """Decided from the name alone, so there is not even a DNS lookup for these.
+
+        The fake DNS here would call every one of them public; the request is avoided
+        because of what the host is, not because of where it resolves.
+        """
+
+        hosts = ['vault', 'intra', 'db', '127.1', '10.1', '0x7f.1', '1.2.3.4', '0',
+                 'db.corp', 'a.local', 'x.lan', 'co.uk']
+        for host in hosts:
+            with self.subTest(host=host):
+                with mock.patch.object(safe_http, 'check_destination') as check:
+                    test, calls = self.unfurl_url(f'https://{host}/abc123')
+
+                self.assertEqual([], calls)
+                check.assert_not_called()
+                self.assertEqual([], expanded_nodes(test))
+
+    def test_unknown_public_short_domain_is_still_guessed(self):
+        """The guess itself is kept; this is what it is for."""
+
+        test, calls = self.unfurl_url(f'https://{self.UNKNOWN_SHORT_DOMAIN}/abc123')
+        self.assertEqual([f'https://{self.UNKNOWN_SHORT_DOMAIN}/abc123'], calls)
+
+    def test_public_name_that_resolves_to_a_private_address_is_refused(self):
+        """A real domain can point anywhere its owner likes, including inward."""
+
+        for address in ('10.0.0.5', '127.0.0.1', '169.254.169.254', '::1'):
+            with self.subTest(address=address):
+                test, calls = self.unfurl_url(
+                    f'https://{self.UNKNOWN_SHORT_DOMAIN}/abc123',
+                    resolves_to={self.UNKNOWN_SHORT_DOMAIN: [address]})
+
+                self.assertEqual([], calls)
+                self.assertEqual([], expanded_nodes(test))
+
+    def test_listed_shorteners_are_checked_too(self):
+        """Being on a list says what a domain is, not where it resolves right now."""
+
+        test, calls = self.unfurl_url('https://t.co/abc123', resolves_to={'t.co': ['192.168.0.10']})
+        self.assertEqual([], calls)
+
+        test, calls = self.unfurl_url(
+            'https://r20.rs6.net/tn.jsp?f=001abc', resolves_to={'r20.rs6.net': ['10.1.2.3']})
+        self.assertEqual([], calls)
+
+    def test_refusal_is_explained_on_the_node(self):
+        """A link Unfurl declined to follow must not look like one with nothing behind it."""
+
+        test, _ = self.unfurl_url('https://t.co/abc123', resolves_to={'t.co': ['10.0.0.5']})
+
+        node = path_node(test, '/abc123')
+        self.assertIn('Unfurl did not try to expand this link', node.hover)
+        self.assertIn('not on the public internet', node.hover)
+        self.assertIn('No request was made', node.hover)
+
+    def test_refusal_note_is_added_below_the_existing_hover(self):
+        test, _ = self.unfurl_url('https://t.co/abc123', resolves_to={'t.co': ['10.0.0.5']})
+        allowed, _ = self.unfurl_url('https://t.co/abc123')
+
+        original_hover = path_node(allowed, '/abc123').hover
+        self.assertTrue(original_hover)
+        self.assertTrue(path_node(test, '/abc123').hover.startswith(f'{original_hover}<br><br>'))
+
+    def test_host_that_does_not_resolve_is_explained_too(self):
+        with patch_requests_get({}) as calls:
+            with mock.patch.object(safe_http, 'resolve_host', side_effect=OSError('no such host')):
+                test = Unfurl(remote_lookups=True)
+                test.add_to_queue(data_type='url', key=None, value='https://t.co/abc123')
+                test.parse_queue()
+
+        self.assertEqual([], calls)
+        self.assertIn('does not resolve', path_node(test, '/abc123').hover)
+
+    def test_expansion_of_a_public_shortener_leaves_no_note(self):
+        routes = {'https://t.co/abc123': redirect('https://github.com/RyanDFIR/unfurl')}
+        with patch_requests_get(routes):
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value='https://t.co/abc123')
+            test.parse_queue()
+
+        self.assertTrue(expanded_nodes(test))
+        self.assertNotIn('did not try', path_node(test, '/abc123').hover)
+
+
+class TestLinkExpansionBudget(unittest.TestCase):
+    """One input can only cause so many expansion requests."""
+
+    @staticmethod
+    def url_carrying(short_links):
+        pairs = [f'u{index}={urllib.parse.quote(link, safe="")}'
+                 for index, link in enumerate(short_links)]
+        return 'https://example.com/?' + '&'.join(pairs)
+
+    def unfurl_url(self, url, routes=None):
+        with patch_requests_get(routes or {}) as calls:
+            test = Unfurl(remote_lookups=True)
+            test.add_to_queue(data_type='url', key=None, value=url)
+            test.parse_queue()
+        return test, calls
+
+    def test_requests_stop_at_the_limit(self):
+        links = [f'https://t.co/link{index}' for index in range(25)]
+        test, calls = self.unfurl_url(self.url_carrying(links))
+
+        self.assertEqual(test.link_expansion_limit, len(calls))
+        self.assertEqual(len(calls), len(set(calls)))
+
+    def test_links_past_the_limit_say_why_they_were_not_expanded(self):
+        links = [f'https://t.co/link{index}' for index in range(25)]
+        test, calls = self.unfurl_url(self.url_carrying(links))
+
+        requested = {call.rsplit('/', 1)[-1] for call in calls}
+        for index in range(25):
+            node = path_node(test, f'/link{index}')
+            with self.subTest(link=f'link{index}'):
+                if f'link{index}' in requested:
+                    self.assertNotIn('did not try', node.hover)
+                else:
+                    self.assertIn('Unfurl did not try to expand this link', node.hover)
+                    self.assertIn(f'all {test.link_expansion_limit} of the link expansions', node.hover)
+
+    def test_inputs_under_the_limit_are_unaffected(self):
+        links = [f'https://t.co/link{index}' for index in range(5)]
+        routes = {link: redirect(f'https://example.org/dest{index}') for index, link in enumerate(links)}
+        test, calls = self.unfurl_url(self.url_carrying(links), routes=routes)
+
+        self.assertEqual(sorted(links), sorted(calls))
+        for index in range(5):
+            self.assertTrue(has_node(test, data_type='url', value=f'https://example.org/dest{index}'))
+
+    def test_a_repeated_link_is_requested_once_and_expanded_every_time(self):
+        """The repeat reuses the first answer, so it costs nothing and loses nothing."""
+
+        link = 'https://t.co/samelink'
+        routes = {link: redirect('https://example.org/destination')}
+        test, calls = self.unfurl_url(self.url_carrying([link] * 6), routes=routes)
+
+        self.assertEqual([link], calls)
+        expansions = [node for node in test.nodes.values()
+                      if node.data_type == 'url' and node.value == 'https://example.org/destination']
+        self.assertEqual(6, len(expansions))
+
+    def test_refused_destinations_count_against_the_limit(self):
+        """Otherwise the limit would bound requests but not DNS lookups."""
+
+        links = [f'https://t.co/link{index}' for index in range(25)]
+        with patch_requests_get({}, resolves_to={'t.co': ['10.0.0.5']}) as calls:
+            with mock.patch.object(safe_http, 'check_destination',
+                                   wraps=safe_http.check_destination) as check:
+                test = Unfurl(remote_lookups=True)
+                test.add_to_queue(data_type='url', key=None, value=self.url_carrying(links))
+                test.parse_queue()
+
+        self.assertEqual([], calls)
+        self.assertEqual(test.link_expansion_limit, check.call_count)
+
+    def test_each_input_gets_its_own_budget(self):
+        """The CLI reuses one Unfurl for every line of a file."""
+
+        links = [f'https://t.co/link{index}' for index in range(25)]
+        with patch_requests_get({}) as calls:
+            test = Unfurl(remote_lookups=True)
+            for _ in range(2):
+                test.add_to_queue(data_type='url', key=None, value=self.url_carrying(links))
+                test.parse_queue()
+                test.reset_graph_state()
+
+        self.assertEqual(2 * test.link_expansion_limit, len(calls))
 
 
 if __name__ == '__main__':
