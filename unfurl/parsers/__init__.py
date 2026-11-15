@@ -40,6 +40,7 @@ __all__ = [
     "parse_site_defs",
     "parse_sonyflake",
     "parse_tiktok",
+    "parse_timeflake",
     "parse_timestamp",
     "parse_trackers",
     "parse_twitter",

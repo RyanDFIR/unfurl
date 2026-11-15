@@ -11,7 +11,7 @@ class TestUuid(unittest.TestCase):
     def test_uuid_v1_null_ts_random_node_id(self):
         """ Test parsing of a UUIDv1, with a null timestamp and randomly-generated Node ID """
 
-        test = Unfurl()
+        test = Unfurl(remote_lookups=False)
         test.add_to_queue(
             data_type='url', key=None, value='00000000000010008f06a139ab18f414')
         test.parse_queue()

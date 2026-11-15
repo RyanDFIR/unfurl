@@ -96,7 +96,8 @@ def decode_cisco_type_7(encoded_text):
 def run(unfurl, node):
 
     # An ETag's hash is of a response body or of S3 part hashes, never of a plaintext worth looking up.
-    if node.data_type.startswith(('uuid', 'etag')):
+    # A 'timeflake' node already has a 'Potential MD5 hash' sibling from the same source value.
+    if node.data_type.startswith(('uuid', 'etag', 'timeflake')):
         return
 
     if node.data_type.startswith('hash'):
@@ -153,7 +154,9 @@ def run(unfurl, node):
                     hover='Cisco "Type 7" password encoding is based<br> on XOR and is easily reversible '
                           '[<a hre="https://passlib.readthedocs.io/en/stable/lib/passlib.hash.cisco_type7.html">'
                           'ref</a>].', parent_id=node.node_id, incoming_edge_config=hash_edge)
-            return
+                return
+            # Not decodable as Type 7: carry on, as any hash that starts with two digits also
+            # matches the Type 7 shape.
 
         if len(node.value) == 32 and node.value[12] == '4':
             # UUIDv4 is very common and it's the same length as an MD5 hash. This might filter out some legitimate
