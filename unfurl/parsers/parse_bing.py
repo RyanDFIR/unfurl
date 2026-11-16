@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unfurl import utils
 import re
 
 bing_edge = {
@@ -306,3 +307,37 @@ def run(unfurl, node):
                               'page (which link, suggestion, or search box they used). <br>'
                               'This specific code is not in Unfurl\'s list of known values.',
                         parent_id=node.node_id, incoming_edge_config=bing_edge)
+
+            # Redirect URLs are base64 prepended with 'a1'
+            # Tend to be seen in URLs starting with `bing.com/ck/a?!&&...`
+            # https://stackoverflow.com/questions/73251425/how-to-get-real-webpage-of-a-bing-com-ck-a-page
+            # https://pushsecurity.com/blog/adception-malvertising-another-search-engines-search-results#id-how-the-attack-works
+            elif node.key == 'u' and node.value[:6] == 'a1aHR0':
+                unfurl.add_to_queue(
+                    data_type='base64', key='Redirect URL', value=node.value[2:],
+                    hover='The redirect URL is base64-encoded and prepended with <code>a1</code>',
+                    parent_id=node.node_id, incoming_edge_config=bing_edge)
+
+            # Tend to be seen in URLs starting with `bing.com/ck/a?!&&...`
+            elif node.key == 'p':
+                b64_data = re.sub(r'^(?:[0-9a-f]{2})+', '', node.value)
+                decoded = utils.try_urlsafe_b64_decode(b64_data)
+                if decoded:
+                    decoded = decoded.decode('utf-8').lstrip('&').split('&')
+                    for p in decoded:
+                        if p[:5] == 'imts=':
+                            unfurl.add_to_queue(
+                                data_type='epoch-seconds', key='imts', value=p[5:],
+                                parent_id=node.node_id, incoming_edge_config=bing_edge)
+                        elif p[:6] == 'iguid=':
+                            unfurl.add_to_queue(
+                                data_type='uuid', key='iguid', value=p[6:],
+                                parent_id=node.node_id, incoming_edge_config=bing_edge)
+                        elif p[:6] == 'insid=':
+                            unfurl.add_to_queue(
+                                data_type='descriptor', key=None, value=f'insid: {p[6:]}',
+                                parent_id=node.node_id, incoming_edge_config=bing_edge)
+                        else:
+                            unfurl.add_to_queue(
+                                data_type='descriptor', key=None, value=p,
+                                parent_id=node.node_id, incoming_edge_config=bing_edge)
