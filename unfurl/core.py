@@ -246,9 +246,6 @@ class Unfurl:
         def __repr__(self):
             return str(self.__dict__)
 
-        def to_dict(self):
-            return self.__dict__
-
     def add_to_stash(self, key: str, value: dict) -> None:
         if not self.stash.get(key):
             self.stash[key] = value
@@ -747,14 +744,106 @@ class Unfurl:
 
         return data_json
 
-    def generate_full_json(self):
-        data_json = {'nodes': [], 'edges': []}
-        for orig_node in self.graph.nodes():
-            data_json['nodes'].append(orig_node.to_dict())
-        for orig_edge in self.graph.edges():
-            data_json['edges'].append(orig_edge)
+    @staticmethod
+    def lineage_step(node):
+        """How a node is named in a lineage: its key if it has one, else its data_type."""
+        if node.key is not None and node.key != '':
+            return str(node.key)
+        return node.data_type
 
-        return data_json
+    @staticmethod
+    def node_to_output_dict(node, lineage):
+        """Describe one node for machine-readable output (the CLI's JSON modes).
+
+        Holds only what the node says, not how the web UI draws it: no colors or
+        width constraints, and the hover text is rendered as plain text. The edge is
+        the one leading into this node (which parser produced it); the root has none.
+        The value is passed through untouched.
+
+        `lineage` is the list of steps from the root down to and including this node
+        (see lineage_step), so a node pulled out on its own still says where it came
+        from. It is a list rather than a joined string because keys can contain any
+        separator one might pick.
+        """
+        edge = None
+        if node.incoming_edge_config:
+            edge = {
+                'label': node.incoming_edge_config.get('label'),
+                'title': node.incoming_edge_config.get('title'),
+            }
+
+        return {
+            'id': node.node_id,
+            'data_type': node.data_type,
+            'key': node.key,
+            'value': node.value,
+            'label': node.label,
+            'description': utils.strip_hover_markup(node.hover) if node.hover else None,
+            'edge': edge,
+            'lineage': lineage,
+        }
+
+    def get_root_node(self):
+        for node in self.graph.nodes():
+            if node.node_id == 1:
+                return node
+        return None
+
+    @staticmethod
+    def node_matches_filter(node, output_filter):
+        """Whether a node's label matches the regex, as a text tree line would."""
+        return re.search(output_filter, str(node.label)) is not None
+
+    def generate_tree_json(self, output_filter=None):
+        """The graph as nested dicts: each node lists the nodes derived from it.
+
+        Every node has a single parent, so the graph is always a tree and nothing is
+        lost by nesting it. Children appear in the order they were created, matching
+        the text tree. Every node has a 'children' list, empty for leaves.
+
+        With `output_filter` (a regex tested against each node's label), only the
+        matching nodes and their ancestors are kept, so each match keeps the chain it
+        was derived from. Every kept node then also has 'matched', telling the
+        matches apart from the ancestors kept for context. If nothing matches, the
+        result is None.
+        """
+        def build(node, parent_lineage):
+            lineage = [*parent_lineage, self.lineage_step(node)]
+            node_dict = self.node_to_output_dict(node, lineage)
+            children = [build(child, lineage) for child in self.graph.successors(node)]
+            node_dict['children'] = [child for child in children if child is not None]
+
+            if output_filter:
+                node_dict['matched'] = self.node_matches_filter(node, output_filter)
+                if not node_dict['matched'] and not node_dict['children']:
+                    return None
+
+            return node_dict
+
+        root = self.get_root_node()
+        return build(root, []) if root is not None else None
+
+    def generate_flat_json(self, output_filter=None):
+        """The graph as a flat list of nodes, each naming its parent by id.
+
+        Nodes are ordered by id, so a parent always comes before its children.
+
+        With `output_filter` (a regex tested against each node's label), only the
+        matching nodes are listed. Their parents may then be absent from the list;
+        each node's lineage still says where it came from.
+        """
+        nodes = []
+        lineages = {}
+        for node in sorted(self.graph.nodes(), key=lambda n: n.node_id):
+            # Parents come first, so the parent's lineage is always already known.
+            lineage = [*lineages.get(node.parent_id, []), self.lineage_step(node)]
+            lineages[node.node_id] = lineage
+            if output_filter and not self.node_matches_filter(node, output_filter):
+                continue
+            node_dict = self.node_to_output_dict(node, lineage)
+            node_dict['parent_id'] = node.parent_id
+            nodes.append(node_dict)
+        return nodes
 
     @staticmethod
     def transform_3d_node(node):
@@ -896,8 +985,6 @@ def run(url, data_type='url', return_type='json', remote_lookups=None, extra_opt
 
     if return_type == 'text':
         return_object = u.generate_text_tree()
-    elif return_type == 'full_json':
-        return_object = u.generate_full_json()
     else:
         return_object = u.generate_json()
 
