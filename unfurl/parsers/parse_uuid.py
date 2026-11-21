@@ -15,7 +15,7 @@
 import re
 import uuid
 
-from unfurl.parsers import parse_chatgpt
+from unfurl.parsers import parse_chatgpt, parse_timeflake
 
 uuid_edge = {
     'color': {
@@ -42,8 +42,10 @@ def run(unfurl, node):
 
     elif node.data_type == 'uuid':
         # A known vendor layout (ChatGPT's UUIDv8 IDs, and its image file IDs that look like
-        # v5-v8 with a zeroed timestamp) is decoded by that vendor's parser instead.
-        if parse_chatgpt.claims_uuid(unfurl, node):
+        # v5-v8 with a zeroed timestamp) is decoded by that vendor's parser instead. So is a
+        # value that cannot be an RFC UUID but starts with a plausible time (a Timeflake or
+        # ULID in UUID form).
+        if parse_chatgpt.claims_uuid(unfurl, node) or parse_timeflake.claims_uuid(unfurl, node):
             return
 
         u = uuid.UUID(node.value)
