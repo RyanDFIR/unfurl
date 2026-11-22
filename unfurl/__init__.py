@@ -22,7 +22,10 @@ from unfurl.core import run
 
 log = logging.getLogger(__name__)
 log.setLevel('WARNING')
-handler = logging.StreamHandler(sys.stdout)
+# Logs go to stderr so they never mix into results printed or piped from stdout (tree
+# text, JSON). A handler is still attached, rather than the library-convention
+# NullHandler, so parser errors stay visible to users who never configure logging.
+handler = logging.StreamHandler(sys.stderr)
 handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     '%(asctime)s.%(msecs).03d | %(name)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')

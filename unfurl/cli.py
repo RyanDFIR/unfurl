@@ -17,7 +17,6 @@
 import argparse
 import csv
 import json
-import logging
 import os
 import re
 import sys
@@ -52,17 +51,6 @@ def configure_output_encoding():
                 stream.reconfigure(errors='replace')
             except (AttributeError, OSError, ValueError):
                 pass
-
-
-def send_logs_to_stderr():
-    """Keep log messages off stdout, which carries only unfurl's results.
-
-    The package's log handler writes to stdout, so a parser error logged mid-run
-    would land inside the output, and in a JSON mode would make it unparseable.
-    """
-    for handler in logging.getLogger('unfurl').handlers:
-        if type(handler) is logging.StreamHandler:
-            handler.setStream(sys.stderr)
 
 
 def json_default(value):
@@ -124,8 +112,6 @@ def command_line_interface():
             re.compile(args.filter)
         except re.error as e:
             parser.error(f'--filter is not a valid regular expression: {e}')
-
-    send_logs_to_stderr()
 
     items_to_unfurl = []
 
