@@ -16,9 +16,14 @@
 
 import argparse
 import csv
+import json
+import logging
 import os
+import re
 import sys
 from unfurl import core
+
+JSON_TYPES = ('json', 'json-flat')
 
 
 def configure_output_encoding():
@@ -49,6 +54,35 @@ def configure_output_encoding():
                 pass
 
 
+def send_logs_to_stderr():
+    """Keep log messages off stdout, which carries only unfurl's results.
+
+    The package's log handler writes to stdout, so a parser error logged mid-run
+    would land inside the output, and in a JSON mode would make it unparseable.
+    """
+    for handler in logging.getLogger('unfurl').handlers:
+        if type(handler) is logging.StreamHandler:
+            handler.setStream(sys.stderr)
+
+
+def json_default(value):
+    """Encode a value json.dumps can't (bytes, for instance) as its str() form.
+
+    One odd value shouldn't cost the whole record, and str() keeps it visible.
+    """
+    return str(value)
+
+
+def json_record(unfurl_instance, item, output_type, output_filter=None):
+    """One input's results as a single line of JSON."""
+    record = {'input': item, 'unfurl_version': core.unfurl.__version__}
+    if output_type == 'json-flat':
+        record['nodes'] = unfurl_instance.generate_flat_json(output_filter=output_filter)
+    else:
+        record['tree'] = unfurl_instance.generate_tree_json(output_filter=output_filter)
+    return json.dumps(record, ensure_ascii=False, default=json_default)
+
+
 def command_line_interface():
     configure_output_encoding()
 
@@ -61,22 +95,37 @@ def command_line_interface():
              'encoded protobufs, and more. if this is instead a file path, unfurl will open '
              'that file and process each line in it as a separate input.')
     parser.add_argument(
-        '-d', '--detailed', help='show more detailed explanations.', action='store_true')
+        '-d', '--detailed',
+        help='show more detailed explanations (tree output; JSON output always includes them).',
+        action='store_true')
     parser.add_argument(
-        '-f', '--filter', help='only output lines that match this filter.')
+        '-f', '--filter',
+        help='only output lines that match this filter (a regex). for "json", matching nodes '
+             'are kept along with their ancestors and marked "matched"; for "json-flat", only '
+             'matching nodes are kept.')
     parser.add_argument(
         '-l', '--lookups', help='allow remote lookups to enhance results.',
         action='store_true', default=None)
     parser.add_argument(
         '-o', '--output',
-        help='file to save output (as CSV) to. if omitted, output is sent to '
-             'stdout (typically this means displayed in the console).')
+        help='file to save output to (CSV for tree output, JSON Lines for JSON output). if '
+             'omitted, output is sent to stdout (typically this means displayed in the console).')
     parser.add_argument(
-        '-t', '--type', help='Type of output to produce', choices=['tree', 'json'], default='tree'
-    )
+        '-t', '--type', choices=['tree', *JSON_TYPES], default='tree',
+        help='type of output to produce. "json" nests each node inside the node it came from; '
+             '"json-flat" lists the nodes with a parent_id. JSON output is one object per input, '
+             'one per line.')
     parser.add_argument(
         '-v', '-V', '--version', action='version', version=f'unfurl v{core.unfurl.__version__}')
     args = parser.parse_args()
+
+    if args.filter:
+        try:
+            re.compile(args.filter)
+        except re.error as e:
+            parser.error(f'--filter is not a valid regular expression: {e}')
+
+    send_logs_to_stderr()
 
     items_to_unfurl = []
 
@@ -88,42 +137,39 @@ def command_line_interface():
     else:
         items_to_unfurl.append(args.what_to_unfurl)
 
-    if args.output:
+    unfurl_instance = core.Unfurl(remote_lookups=args.lookups)
+
+    def unfurl_items():
+        """Unfurl each input in turn, yielding (input, instance) with its graph built."""
+        for item in items_to_unfurl:
+            unfurl_instance.add_to_queue(data_type='url', key=None, value=item)
+            unfurl_instance.parse_queue()
+            yield item, unfurl_instance
+            unfurl_instance.reset_graph_state()
+
+    if args.type in JSON_TYPES:
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as json_file:
+                for item, instance in unfurl_items():
+                    json_file.write(json_record(instance, item, args.type, args.filter) + '\n')
+        else:
+            for item, instance in unfurl_items():
+                print(json_record(instance, item, args.type, args.filter))
+
+    elif args.output:
         with open(args.output, 'w', newline='', encoding='utf-8') as csv_file:
             csv_writer = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
             csv_writer.writerow(['url', 'unfurled'])
-
-            unfurl_instance = core.Unfurl(remote_lookups=args.lookups)
-            for item in items_to_unfurl:
-                unfurl_instance.add_to_queue(
-                    data_type='url', key=None,
-                    value=item)
-                unfurl_instance.parse_queue()
-                if args.type == 'json':
-                    csv_writer.writerow(
-                        [item, unfurl_instance.generate_full_json()])
-                else:
-                    csv_writer.writerow(
-                        [item, unfurl_instance.generate_text_tree(
-                            detailed=args.detailed,
-                            output_filter=args.filter)])
-                unfurl_instance.reset_graph_state()
+            for item, instance in unfurl_items():
+                csv_writer.writerow(
+                    [item, instance.generate_text_tree(
+                        detailed=args.detailed, output_filter=args.filter)])
 
     else:
-        unfurl_instance = core.Unfurl(remote_lookups=args.lookups)
-        for item in items_to_unfurl:
-            unfurl_instance.add_to_queue(
-                data_type='url', key=None,
-                value=item)
-            unfurl_instance.parse_queue()
-
-            if args.type == 'json':
-                print(unfurl_instance.generate_full_json())
-            else:
-                print(unfurl_instance.generate_text_tree(
-                    detailed=args.detailed, output_filter=args.filter))
+        for item, instance in unfurl_items():
+            print(instance.generate_text_tree(
+                detailed=args.detailed, output_filter=args.filter))
             print()
-            unfurl_instance.reset_graph_state()
 
 
 if __name__ == '__main__':
