@@ -74,15 +74,35 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  -d, --detailed        show more detailed explanations.
-  -f, --filter FILTER   only output lines that match this filter.
+  -d, --detailed        show more detailed explanations (tree output; JSON
+                        output always includes them).
+  -f, --filter FILTER   only output lines that match this filter (a regex).
+                        for "json", matching nodes are kept along with their
+                        ancestors and marked "matched"; for "json-flat", only
+                        matching nodes are kept.
   -l, --lookups         allow remote lookups to enhance results.
-  -o, --output OUTPUT   file to save output (as CSV) to. if omitted, output is
-                        sent to stdout (typically this means displayed in the
+  -o, --output OUTPUT   file to save output to (CSV for tree output, JSON
+                        Lines for JSON output). if omitted, output is sent to
+                        stdout (typically this means displayed in the
                         console).
-  -t, --type {tree,json}
-                        Type of output to produce
+  -t, --type {tree,json,json-flat}
+                        type of output to produce. "json" nests each node
+                        inside the node it came from; "json-flat" lists the
+                        nodes with a parent_id. JSON output is one object per
+                        input, one per line.
   -v, -V, --version     show program's version number and exit
+```
+
+Each JSON node has a `lineage`: the steps from the input down to that node, each named by the
+node's key if it has one or its data type if not (for example
+`["url", "url.query", "t", "timestamp.epoch-seconds"]`), so a node pulled out on its own
+still shows where it came from.
+
+JSON output works well with `jq`. For example, to list every timestamp unfurl found, at
+any depth:
+
+```
+unfurl -t json "https://example.com/?t=1700000000" | jq '.. | objects | select(.data_type? | strings | startswith("timestamp")) | .value'
 ```
 
 `-l` enables remote lookups for a single run; see [Configuration](#configuration) to turn
