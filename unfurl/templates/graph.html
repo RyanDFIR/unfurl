@@ -224,27 +224,6 @@
           };
           var network = new vis.Network(container, unfurl, options);
 
-          // Insecure-context (LAN IP, non-https) browsers do not expose
-          // navigator.clipboard. Fall back to the legacy execCommand path so
-          // copy still works when the page is loaded over http://192.168.x.x.
-          function copyToClipboard(text) {
-            if (window.isSecureContext && navigator.clipboard) {
-              return navigator.clipboard.writeText(text);
-            }
-            return new Promise(function(resolve, reject) {
-              var ta = document.createElement('textarea');
-              ta.value = text;
-              ta.style.position = 'fixed';
-              ta.style.opacity = '0';
-              document.body.appendChild(ta);
-              ta.focus(); ta.select();
-              try {
-                document.execCommand('copy') ? resolve() : reject();
-              } catch (e) { reject(e); }
-              document.body.removeChild(ta);
-            });
-          }
-
           network.on("doubleClick", function(params) {
             params.event.preventDefault();
             var selectedNodeId = this.getNodeAt(params.pointer.DOM);
@@ -670,11 +649,11 @@
         wrapper.appendChild(hint);
     }
 
-    // See note above copyToClipboard inside the network handler — the
-    // navigator.clipboard API is unavailable on non-https LAN IPs, so we
-    // provide a fallback. Defined again here because this function lives
-    // in a different script scope from the network-handler version.
-    function copyToClipboardTop(text) {
+    // Insecure-context (LAN IP, non-https) browsers do not expose
+    // navigator.clipboard. Fall back to the legacy execCommand path so
+    // copy still works when the page is loaded over http://192.168.x.x.
+    // Used by both the Graph view's double-click copy and copyTree().
+    function copyToClipboard(text) {
         if (window.isSecureContext && navigator.clipboard) {
             return navigator.clipboard.writeText(text);
         }
@@ -696,7 +675,7 @@
         var text = window.unfurlTreeText || '';
         var btn = document.getElementById('copyTreeBtn');
         var originalHTML = btn.innerHTML;
-        copyToClipboardTop(text).then(function() {
+        copyToClipboard(text).then(function() {
             btn.textContent = 'Copied!';
             setTimeout(function() { btn.innerHTML = originalHTML; }, 1500);
         });
