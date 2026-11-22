@@ -65,6 +65,17 @@ _known_domain_lists = None
 # request the web app served. See Unfurl.domain_in_top_sites_list().
 _top_sites_domains = None
 
+# Names reserved by RFC 2606 / RFC 6761 (and .local, RFC 6762) that can never be a real
+# public host. Used to clean upstream warninglists that contain them by mistake.
+RESERVED_DOMAIN_NAMES = ('example.com', 'example.net', 'example.org', 'example', 'test',
+                         'invalid', 'localhost', 'local')
+
+
+def is_reserved_domain_name(name):
+    """Whether `name` is, or is under, a reserved domain name (e.g. host3.example.com)."""
+    name = str(name).lower().rstrip('.')
+    return any(name == reserved or name.endswith('.' + reserved) for reserved in RESERVED_DOMAIN_NAMES)
+
 REMOTE_LOOKUPS_ENV_VAR = 'UNFURL_REMOTE_LOOKUPS'
 
 # Enabling remote lookups from the environment is worth announcing, but the web app
@@ -274,6 +285,15 @@ class Unfurl:
             # those domains are not security blog-related, so I'm removing it.
             warning_lists_dict.pop('List of known security providers/vendors blog domain', 1)
             warning_lists_dict.pop('OSINT.DigitalSide.IT Warning List', 1)
+
+            # This list contains reserved names (example.com, *.example.com, *.local,
+            # *.localhost) that cannot be public resolvers, so drop them. Otherwise every
+            # example.com URL, the commonest domain in tests and documentation, is
+            # reported as a known public DNS resolver.
+            dns_resolvers = warning_lists_dict.get('List of known public DNS resolvers expressed as hostname')
+            if dns_resolvers:
+                dns_resolvers.list = [
+                    entry for entry in dns_resolvers.list if not is_reserved_domain_name(entry)]
 
             # And the capitalization was bothering me, so fixing it here.
             warning_lists_dict['List of known google domains'].name = 'List of known Google domains'
