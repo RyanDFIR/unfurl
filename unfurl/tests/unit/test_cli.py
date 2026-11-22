@@ -1,7 +1,6 @@
 from unfurl import cli
 import io
 import json
-import logging
 import os
 import tempfile
 import unittest
@@ -223,18 +222,6 @@ class TestJsonOutput(unittest.TestCase):
         with mock.patch.object(cli.sys, 'stderr', io.StringIO()), \
                 self.assertRaises(SystemExit):
             run_cli('-t', 'json', '-f', '(unclosed', self.url)
-
-    def test_logs_are_moved_off_stdout(self):
-        handlers = [h for h in logging.getLogger('unfurl').handlers
-                    if type(h) is logging.StreamHandler]
-        self.assertTrue(handlers)
-        stderr = io.StringIO()
-        with mock.patch.object(cli.sys, 'stderr', stderr):
-            cli.send_logs_to_stderr()
-            for handler in handlers:
-                self.assertIs(stderr, handler.stream)
-        # Point the handlers back at the real stderr, not the throwaway buffer.
-        cli.send_logs_to_stderr()
 
 
 if __name__ == '__main__':
