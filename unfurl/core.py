@@ -39,7 +39,7 @@ def config_paths():
     config when run from somewhere other than the repo root.
 
     All templates are listed before all local files so that a local value always wins,
-    even over a template in a more specific directory — a template's empty API keys
+    even over a template in a more specific directory. A template's empty API keys
     must never clobber real ones.
     """
     package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -75,6 +75,7 @@ def is_reserved_domain_name(name):
     """Whether `name` is, or is under, a reserved domain name (e.g. host3.example.com)."""
     name = str(name).lower().rstrip('.')
     return any(name == reserved or name.endswith('.' + reserved) for reserved in RESERVED_DOMAIN_NAMES)
+
 
 REMOTE_LOOKUPS_ENV_VAR = 'UNFURL_REMOTE_LOOKUPS'
 
@@ -629,6 +630,16 @@ class Unfurl:
             max_row_length = len(str(value)) * 2.2
             new_item['extra_options'] = \
                 {'widthConstraint': {'maximum': max(max_row_length, 200)}}
+
+        # parse_queue() stops at node_limit, but only checks it when taking an item off
+        # the queue, so a parser that queues one item per protobuf field (hundreds of
+        # thousands, for a decompressed run of zero bytes) could hold them all in memory.
+        # Cap the queue at the nodes still allowed. (An item the cycle check later drops
+        # frees a slot it can't give back, so a pathological input may stop a few nodes
+        # short of the limit; a real URL never comes near it.)
+        if self.total_nodes + self.queue.qsize() >= self.node_limit:
+            log.info(f'Node limit reached; not queuing {data_type} item')
+            return
 
         log.info(f'Added to queue: {new_item}')
         self.queue.put(new_item)

@@ -95,7 +95,7 @@ class JsonVisJS(Resource):
             extra_options={'widthConstraint': {'maximum': 1200}})
 
 
-def web_app(host='localhost', port='5000', debug='True', remote_lookups=None):
+def web_app(host='localhost', port='5000', debug=False, remote_lookups=None):
 
     config = load_config()
     remote_lookups = resolve_remote_lookups(explicit=remote_lookups, config=config)

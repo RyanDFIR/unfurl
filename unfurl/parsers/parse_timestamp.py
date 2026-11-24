@@ -580,6 +580,10 @@ def run(unfurl, node):
         matches_hex = utils.hex_re.fullmatch(str(node.value))
 
         if matches_digits:
+            # The longest format below is 19 digits, so a much longer value can't be one.
+            # Python also refuses to convert a digit string over 4,300 characters to int.
+            if len(str(node.value)) > 32:
+                return
             timestamp = int(node.value)
 
             # Epoch nanoseconds (19 digits); see snowflake_domains note above
