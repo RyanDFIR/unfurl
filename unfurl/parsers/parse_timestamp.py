@@ -457,6 +457,21 @@ def decode_epoch_hex_milliseconds(milliseconds):
     }
 
 
+def decode_notion_days(days):
+    """Decode a Notion ID's day field (days since 2024-01-01 UTC) to a date.
+
+    Notion's UUIDv8 IDs hold only the UTC day they were created, so this is a date with no
+    time of day. Reached only when a parser types a node "notion-days" explicitly.
+    """
+    day = datetime.date(2024, 1, 1) + datetime.timedelta(days=int(days))
+
+    return {
+        'data_type': 'timestamp.notion-days',
+        'display_type': 'days since 2024-01-01 (a UTC date; no time of day)',
+        'timestamp_value': day.isoformat()
+    }
+
+
 def decode_windows_filetime_hex(intervals):
     """Decode a hex timestamp in Windows FileTime format to a human-readable timestamp.
 
@@ -496,6 +511,11 @@ def run(unfurl, node):
     # ETag fields are typed sizes, inode numbers and part counts. Their mtimes are handed
     # off as epoch-* nodes, which don't match this prefix.
     if node.data_type.startswith('etag.'):
+        return
+
+    # Notion's and Kimi's typed ID fields (a workspace short ID, a random tail) are not
+    # timestamps. Their real times are handed off as notion-days / epoch-* nodes.
+    if node.data_type.startswith(('notion.', 'kimi.')):
         return
 
     # If the node is explicitly classified as a raw timestamp, use that type for the conversion
@@ -549,6 +569,9 @@ def run(unfurl, node):
 
     elif node.data_type == 'epoch-hex-milliseconds':
         new_timestamp = decode_epoch_hex_milliseconds(node.value)
+
+    elif node.data_type == 'notion-days':
+        new_timestamp = decode_notion_days(node.value)
 
     # Otherwise, examine the value of the node and see if we can detect a reasonable timestamp
     else:

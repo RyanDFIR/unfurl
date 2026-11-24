@@ -348,16 +348,6 @@ def uuid_context(unfurl, node):
     return None
 
 
-def parent_is_whole_path(unfurl, node):
-    """True if a 'uuid' node came from the url.path node rather than a path segment.
-
-    parse_uuid accepts a leading '/', so a one-segment path like /{uuid} yields a 'uuid'
-    node from both the path and the segment. Only the segment's copy is decoded.
-    """
-    parents = unfurl.get_predecessor_node(node)
-    return bool(parents) and parents[0].data_type == 'url.path'
-
-
 def add_description(unfurl, node, label, hover):
     unfurl.add_to_queue(
         data_type='description', key=None, value=None, label=label, hover=hover,
@@ -777,7 +767,7 @@ def run(unfurl, node):
 
     if node.data_type == 'uuid':
         hex_id = str(node.value).lower()
-        if len(hex_id) != 32 or parent_is_whole_path(unfurl, node):
+        if len(hex_id) != 32:
             return
 
         if is_image_file_id(hex_id) and unfurl.preceding_domain_matches(node, OAI_CONTENT_DOMAIN):

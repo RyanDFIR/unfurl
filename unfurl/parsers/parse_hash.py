@@ -16,7 +16,7 @@ import logging
 
 import requests
 from unfurl import utils
-from unfurl.parsers import parse_chatgpt
+from unfurl.parsers import parse_chatgpt, parse_notion
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,8 @@ def run(unfurl, node):
 
     # An ETag's hash is of a response body or of S3 part hashes, never of a plaintext worth looking up.
     # A 'timeflake' node already has a 'Potential MD5 hash' sibling from the same source value.
-    if node.data_type.startswith(('uuid', 'etag', 'timeflake')):
+    # Notion and Kimi typed fields are pieces of an already-decoded ID.
+    if node.data_type.startswith(('uuid', 'etag', 'timeflake', 'notion.', 'kimi.')):
         return
 
     if node.data_type.startswith('hash'):
@@ -165,6 +166,10 @@ def run(unfurl, node):
 
         if parse_chatgpt.claims_hex_value(unfurl, node):
             # An undashed ChatGPT object ID (notification_id, /s/{hex}, ...) in a ChatGPT URL
+            return
+
+        if parse_notion.claims_hex_value(unfurl, node):
+            # An undashed Notion page, view or other record ID that parse_notion decodes
             return
 
         hash_name, hash_hover, new_node_value = None, None, None
