@@ -13,8 +13,6 @@
 # limitations under the License.
 
 import datetime
-import json
-import os
 import re
 
 from unfurl import utils
@@ -55,10 +53,96 @@ TESTING_PREFIX = 'fff'
 MAIN_SHORT_ID = 'd872b594c'
 SPACE_TABLE_CODE = 3
 
-with open(os.path.join(os.path.dirname(__file__), 'notion_table_codes.json'), encoding='utf-8') as _f:
-    _codes = json.load(_f)
-TABLE_CODES = {code: name for name, code in _codes['v1_table_codes'].items()}
-DETERMINISTIC_CODES = {code: name for name, code in _codes['deterministic_type_codes'].items()}
+# Record-table codes, read from Notion's web client on 2026-11-03. TABLE_CODES is what the random
+# generator writes to hex[20:24] (block is 192, i.e. the 0xc0 top-bits marker, not a real code).
+# DETERMINISTIC_CODES is the separate numbering in the low 7 bits of hex[20:22] of deterministic IDs.
+# Notion adds tables over time; an ID with an unknown code is not treated as a Notion ID.
+TABLE_CODES = {
+    1: 'customer', 2: 'notion_user', 3: 'space', 4: 'space_bot', 5: 'space_user', 6: 'space_view', 7: 'token',
+    8: 'user_root', 9: 'temporary_password', 10: 'password', 11: 'collection', 12: 'collection_view',
+    13: 'apple_token', 14: 'google_token', 15: 'follow', 16: 'activity', 17: 'notification',
+    18: 'firebase_token', 19: 'trello_token', 20: 'asana_token', 21: 'confluence_token', 22: 'monday_token',
+    23: 'external_entity', 24: 'external_token', 25: 'external_integration_app', 26: 'slack_integration',
+    27: 'slack_notification', 28: 'discussion', 29: 'comment', 30: 'snapshot', 31: 'credit',
+    32: 'used_credit', 33: 'user_settings', 34: 'evernote_token', 35: 'space_recover_pages',
+    36: 'drive_token', 37: 'block_token', 38: 'user_metadata', 39: 'bot', 40: 'bot_token', 41: 'saml_config',
+    42: 'experiment', 43: 'education_domain', 44: 'education_email', 45: 'space_invite_link',
+    46: 'public_email_domain', 47: 'user_data_consent_permissions', 48: 'access_request', 49: 'page_visit',
+    50: 'page_exit', 51: 'subscription', 52: 'space_domain', 53: 'admin_api_op_log', 54: 'admin_api_log',
+    55: 'integration', 56: 'integration_token', 57: 'oauth_authorization_code', 58: 'mfa_settings',
+    59: 'device', 60: 'user_device', 61: 'external_authentication', 62: 'external_authentication_token',
+    63: 'webhook_subscription', 64: 'external_object', 65: 'user_session_auth_token', 66: 'team',
+    67: 'signup_tracking', 68: 'cookie_consent', 71: 'reaction', 72: 'external_integration_authorization',
+    73: 'domain_verification_code', 74: 'email_domain', 75: 'space_email_domain', 76: 'invite',
+    77: 'automation', 78: 'server_integrations__jira_webhook', 79: 'server_integrations__github_installation',
+    80: 'server_integrations__slack_enterprise', 81: 'server_integrations__slack_workspace',
+    82: 'server_integrations__slack_bot_token', 83: 'server_integrations__slack_unique_global_user',
+    84: 'server_integrations__slack_unique_local_user', 85: 'server_integrations__slack_notion_token',
+    86: 'server_integrations__slack_channel', 87: 'server_integrations__zendesk_token', 88: 'record_counter',
+    89: 'record_key', 90: 'automation_action', 91: 'space_entitlement_usage',
+    92: 'space_user_entitlement_usage', 93: 'user_export', 94: 'space_content_duplication_lookup',
+    95: 'space_membership_update', 96: 'template', 97: 'template_tag', 99: 'template_content_group',
+    100: 'template_draft', 101: 'organization', 102: 'organization_space', 104: 'space_user_recovery',
+    106: 'ai_waitlist', 108: 'assistant_chat_session', 109: 'assistant_chat_step', 110: 'layout',
+    111: 'subscription_banner', 112: 'public_domain', 113: 'ai_embedding_config', 114: 'billing_data',
+    115: 'invoice', 116: 'internal_domain', 117: 'billing_subscription', 118: 'marketplace_customer',
+    119: 'marketplace_listing', 120: 'marketplace_acquisition', 121: 'site', 122: 'custom_emoji',
+    123: 'marketplace_installation', 124: 'marketplace_listing_review', 125: 'form_question',
+    126: 'plus_lock_waitlist', 127: 'template_collection', 128: 'record_mention', 129: 'integration_listing',
+    130: 'global_oauth_client', 131: 'user_oauth_authorization_code', 132: 'user_oauth_access_token',
+    133: 'trusted_domain', 134: 'assistant_session_starter', 135: 'free_chart', 136: 'space_permission_group',
+    137: 'space_permission_group_member', 138: 'channel', 139: 'related_content',
+    141: 'form_response_snapshot', 142: 'marketplace_refund', 143: 'passkey_authenticator',
+    144: 'marketplace_coupon', 145: 'workflow_transcript', 146: 'workflow', 147: 'workflow_automation_run',
+    148: 'workflow_subscription', 149: 'schedule_for_event', 150: 'marketplace_payout',
+    151: 'marketplace_creator_balance_transaction', 152: 'inference_transcript',
+    153: 'integration_webhook_subscription', 154: 'github_student_pack_redemption',
+    155: 'text_slice_block_mapping', 156: 'legal_hold', 157: 'upgrade_request', 158: 'legal_hold_user',
+    159: 'marketplace_payout_remainder', 160: 'workspace_encryption_key', 161: 'microsoft_oauth',
+    162: 'legal_hold_page', 163: 'workflow_external_connection', 164: 'workflow_external_connection_secret',
+    165: 'legal_hold_page_actor', 166: 'ai_connector_connection', 167: 'ai_connector_user_connection',
+    168: 'marketplace_seller', 169: 'thread', 170: 'thread_message', 171: 'contact_sales',
+    172: 'scheduled_digest_message', 173: 'user_seen_record', 174: 'marketplace_creator_stripe_balance_log',
+    175: 'workflow_artifact', 176: 'bot_extended_metadata', 177: 'synthetic_trial', 178: 'file_upload',
+    179: 'legal_hold_export', 180: 'external_user_profile', 181: 'workflow_external_scoped_connection',
+    182: 'workflow_module', 183: 'offer_code', 184: 'referral', 185: 'marketplace_profile',
+    186: 'marketplace_profile_content', 187: 'marketplace_profile_member', 188: 'user_alias',
+    189: 'marketplace_badge', 190: 'marketplace_badge_assignment', 191: 'ip_restriction', 192: 'block',
+    193: 'server_integrations__discord_user_mapping', 194: 'offer_status', 196: 'billing_data_history_entry',
+    197: 'marketplace_service', 198: 'marketplace_service_request', 199: 'marketplace_profile_invitation',
+    200: 'organization_request', 201: 'integration_management_permissions', 202: 'sidebar_section',
+    203: 'sidebar_section_item', 205: 'external_connection', 206: 'mcp_registry_entry',
+    209: 'workflow_property_edit_attribution', 210: 'marketplace_custom_agent',
+    211: 'marketplace_custom_agent_version', 212: 'collection_property_schema', 213: 'block_property_value',
+    214: 'sync', 215: 'sync_credential', 216: 'sync_upstream_resource', 217: 'prompt', 218: 'prompt_usage',
+    219: 'space_billing_data', 220: 'space_billing_subscription', 221: 'factory',
+    222: 'organization_bot_token', 223: 'organization_bot', 224: 'space_billing_invoices',
+    225: 'association_relation', 226: 'marketplace_space_access_log',
+    227: 'workflow_credit_limit_increase_request', 228: 'external_agent_resource',
+    229: 'external_agent_resource_config', 230: 'external_agent_space_policy',
+    232: 'space_billing_data_history_entry', 233: 'team_admin', 234: 'team_access_entity',
+    235: 'global_test_dynamo', 236: 'space_routed_test_dynamo', 237: 'single_region_test_dynamo',
+    238: 'custom_block_definition', 239: 'custom_block_deploy', 240: 'association',
+    241: 'external_agent_specification', 242: 'microsoft_teams_account', 243: 'workflow_instance_config',
+    244: 'task_output', 245: 'task_output_main', 246: 'meeting_note_participant',
+    248: 'thread_derived_information', 249: 'space_mcp_registry', 250: 'calendar_event_binding_group',
+    251: 'calendar_event_binding_group_opt_in', 252: 'credit_limit_increase_request', 253: 'sidebar_preset',
+    254: 'space_permission_sub_group', 255: 'revision', 256: 'edit_stack', 257: 'prompt_security_scan',
+    258: 'dmca_takedown_request', 259: 'ekm_index_key',
+}
+
+DETERMINISTIC_CODES = {
+    1: 'block', 2: 'record_counter', 3: 'discussion', 4: 'comment', 5: 'plus_lock_waitlist',
+    6: 'record_mention', 7: 'collection', 8: 'collection_view', 9: 'space_recover_pages',
+    10: 'legal_hold_page', 11: 'legal_hold_page_actor', 12: 'activity', 13: 'thread_message',
+    14: 'schedule_for_event', 15: 'workflow_artifact', 16: 'thread', 18: 'sidebar_section',
+    19: 'sidebar_section_item', 20: 'marketplace_installation', 21: 'team', 22: 'reaction', 23: 'workflow',
+    25: 'automation', 26: 'automation_action', 27: 'layout', 28: 'form_question',
+    29: 'collection_property_schema', 30: 'block_property_value', 31: 'association_relation',
+    32: 'custom_block_definition', 33: 'association', 34: 'meeting_note_participant',
+    35: 'thread_derived_information', 36: 'space_permission_sub_group', 37: 'revision', 38: 'edit_stack',
+    39: 'prompt_security_scan',
+}
 
 TABLE_NAMES = {
     'block': 'Block (a page, text, image, file, database row, ...)',
