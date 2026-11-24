@@ -264,8 +264,8 @@ def run(unfurl, node):
         return
 
     # fbclid parts are fully decoded by parse_facebook; guessing a protobuf out
-    # of their base64 produces garbage fields
-    if node.data_type.startswith(('uuid', 'hash', 'facebook.fbclid.')):
+    # of their base64 produces garbage fields. Same for the pieces of decoded Notion and Kimi IDs.
+    if node.data_type.startswith(('uuid', 'hash', 'facebook.fbclid.', 'notion.', 'kimi.')):
         return False
 
     hex_m = utils.hex_re.fullmatch(node.value)

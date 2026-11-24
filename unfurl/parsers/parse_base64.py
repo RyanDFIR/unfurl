@@ -48,6 +48,10 @@ def run(unfurl, node):
     if node.data_type == 'url.query.pair' and node.key == 'dns':
         return False
 
+    # Pieces of an already-decoded Notion or Kimi ID (a hex random tail can decode to printable junk)
+    if node.data_type.startswith(('notion.', 'kimi.')):
+        return False
+
     # Long integers and normal words pass the b64 regex, but we don't want those here.
     # It's technically valid base64, but to reduce false positives, we're filtering them out.
     if utils.long_int_re.fullmatch(node.value) or utils.letters_re.fullmatch(node.value):

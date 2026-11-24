@@ -126,6 +126,31 @@ class TestUuid(unittest.TestCase):
         # a vendor-specific UUID should not yield a decoded timestamp
         self.assertEqual([], get_nodes_by_type(test, 'epoch-milliseconds'))
 
+    def test_uuid_whole_path_not_duplicated(self):
+        """ A one-segment path that is only a UUID yields one uuid node, not one per path and segment """
+
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(
+            data_type='url', key=None, value='https://example.com/320C3D4DCC00875B8EC932D5F69181C0')
+        test.parse_queue()
+
+        uuid_nodes = get_nodes_by_type(test, 'uuid')
+        self.assertEqual(len(uuid_nodes), 1)
+        self.assertEqual('url.path.segment', test.get_predecessor_node(uuid_nodes[0])[0].data_type)
+        self.assertEqual(len(get_nodes_by_type(test, 'uuid-parsed')), 1)
+
+    def test_uuid_fragment_not_duplicated(self):
+        """ A fragment that is only a UUID yields one uuid node (from the fragment anchor) """
+
+        test = Unfurl(remote_lookups=False)
+        test.add_to_queue(
+            data_type='url', key=None, value='https://example.com/page#320C3D4DCC00875B8EC932D5F69181C0')
+        test.parse_queue()
+
+        uuid_nodes = get_nodes_by_type(test, 'uuid')
+        self.assertEqual(len(uuid_nodes), 1)
+        self.assertEqual('url.fragment.anchor', test.get_predecessor_node(uuid_nodes[0])[0].data_type)
+
 
 if __name__ == '__main__':
     unittest.main()

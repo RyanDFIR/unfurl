@@ -15,7 +15,7 @@
 import re
 import uuid
 
-from unfurl.parsers import parse_chatgpt, parse_timeflake
+from unfurl.parsers import parse_chatgpt, parse_kimi, parse_notion, parse_timeflake
 
 uuid_edge = {
     'color': {
@@ -27,6 +27,12 @@ uuid_edge = {
 
 
 def run(unfurl, node):
+    # A whole path or fragment that is only a UUID ("/{uuid}" or "#{uuid}") also has a child
+    # (the path segment or fragment anchor) with the same value. Matching only the child keeps
+    # the UUID from being added, and decoded, twice.
+    if node.data_type in ('url.path', 'url.fragment'):
+        return
+
     if not node.data_type.startswith(('uuid', 'hash')):
         # Leading '/' optional, 8-4-4-4-12 hex digits with '-' optional, 13th char limited to [1-6]
         m = re.fullmatch(r'/?([0-9A-F]{8}-?[0-9A-F]{4}-?[1-8][0-9A-F]{3}-?[0-9A-F]{4}-?[0-9A-F]{12})',
@@ -42,10 +48,11 @@ def run(unfurl, node):
 
     elif node.data_type == 'uuid':
         # A known vendor layout (ChatGPT's UUIDv8 IDs, and its image file IDs that look like
-        # v5-v8 with a zeroed timestamp) is decoded by that vendor's parser instead. So is a
-        # value that cannot be an RFC UUID but starts with a plausible time (a Timeflake or
-        # ULID in UUID form).
-        if parse_chatgpt.claims_uuid(unfurl, node) or parse_timeflake.claims_uuid(unfurl, node):
+        # v5-v8 with a zeroed timestamp; Notion and Kimi UUIDv8s on their own sites) is decoded
+        # by that vendor's parser instead. So is a value that cannot be an RFC UUID but starts with
+        # a plausible time (a Timeflake or ULID in UUID form).
+        if (parse_chatgpt.claims_uuid(unfurl, node) or parse_notion.claims_uuid(unfurl, node)
+                or parse_kimi.claims_uuid(unfurl, node) or parse_timeflake.claims_uuid(unfurl, node)):
             return
 
         u = uuid.UUID(node.value)
