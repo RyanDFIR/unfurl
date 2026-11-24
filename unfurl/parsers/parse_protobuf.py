@@ -30,6 +30,12 @@ _field_names_path = os.path.join(os.path.dirname(__file__), 'proto', 'field_name
 with open(_field_names_path, 'r') as f:
     proto_field_names = json.load(f)
 
+# Longest str or bytes value this parser will try to decode. blackboxprotobuf's varint
+# decoding is quadratic on bytes that all have the continuation bit set, and a decoded
+# or decompressed value can be up to a megabyte. Protobufs carried in URLs are far
+# smaller than this.
+MAX_PROTOBUF_INPUT_LENGTH = 65_536
+
 proto_edge = {
     'color': {
         'color': '#2D9A58'
@@ -215,6 +221,9 @@ def run(unfurl, node):
                         label=label or f'{field_number}: {field_value}',
                         hover=field_hover,
                         parent_id=node.node_id, incoming_edge_config=edge_type)
+
+    if isinstance(node.value, (str, bytes)) and len(node.value) > MAX_PROTOBUF_INPUT_LENGTH:
+        return
 
     context, skip = find_proto_context(unfurl, node)
 

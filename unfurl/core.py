@@ -630,6 +630,16 @@ class Unfurl:
             new_item['extra_options'] = \
                 {'widthConstraint': {'maximum': max(max_row_length, 200)}}
 
+        # parse_queue() stops at node_limit, but only checks it when taking an item off
+        # the queue, so a parser that queues one item per protobuf field (hundreds of
+        # thousands, for a decompressed run of zero bytes) could hold them all in memory.
+        # Cap the queue at the nodes still allowed. (An item the cycle check later drops
+        # frees a slot it can't give back, so a pathological input may stop a few nodes
+        # short of the limit; a real URL never comes near it.)
+        if self.total_nodes + self.queue.qsize() >= self.node_limit:
+            log.info(f'Node limit reached; not queuing {data_type} item')
+            return
+
         log.info(f'Added to queue: {new_item}')
         self.queue.put(new_item)
 

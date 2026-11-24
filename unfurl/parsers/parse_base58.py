@@ -26,6 +26,11 @@ b58_edge = {
 _B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 _B58_INDEX = {char: index for index, char in enumerate(_B58_ALPHABET)}
 
+# The decode below is quadratic in the length of the input (big-integer multiply per
+# character), and a decompressed value can be up to a megabyte. Real base58 values
+# (addresses, CIDs, short tokens) are well under this.
+MAX_B58_LENGTH = 1024
+
 
 def _b58_decode(value):
     """Decode a base58 string to bytes, or None if it has a non-alphabet character.
@@ -33,6 +38,8 @@ def _b58_decode(value):
     Base58 has no stdlib decoder; this is the equivalent of base64.b32decode. The
     decode is big-integer based, and each leading '1' is a leading zero byte.
     """
+    if len(value) > MAX_B58_LENGTH:
+        return None
     if not all(char in _B58_INDEX for char in value):
         return None
     number = 0
