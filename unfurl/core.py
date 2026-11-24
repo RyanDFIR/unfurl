@@ -39,7 +39,7 @@ def config_paths():
     config when run from somewhere other than the repo root.
 
     All templates are listed before all local files so that a local value always wins,
-    even over a template in a more specific directory — a template's empty API keys
+    even over a template in a more specific directory. A template's empty API keys
     must never clobber real ones.
     """
     package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -75,6 +75,7 @@ def is_reserved_domain_name(name):
     """Whether `name` is, or is under, a reserved domain name (e.g. host3.example.com)."""
     name = str(name).lower().rstrip('.')
     return any(name == reserved or name.endswith('.' + reserved) for reserved in RESERVED_DOMAIN_NAMES)
+
 
 REMOTE_LOOKUPS_ENV_VAR = 'UNFURL_REMOTE_LOOKUPS'
 

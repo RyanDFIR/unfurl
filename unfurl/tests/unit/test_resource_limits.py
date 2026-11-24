@@ -38,6 +38,19 @@ class TestProtobufLength(unittest.TestCase):
             [n for n in test.nodes.values() if n.data_type.startswith('proto')])
 
 
+class TestTimestampLength(unittest.TestCase):
+
+    def test_long_digit_string_does_not_raise(self):
+        # Over Python's 4,300-digit int conversion limit; parse_timestamp used to raise.
+        from unfurl.parsers import parse_timestamp
+        test = Unfurl(remote_lookups=False)
+        node_id = test.create_node(
+            data_type='string', key=None, value='1' * 5000, label=None, hover=None)
+        parse_timestamp.run(test, test.nodes[node_id])
+
+        self.assertTrue(test.queue.empty())
+
+
 class TestQueueBudget(unittest.TestCase):
 
     def test_queue_stops_growing_at_node_limit(self):
