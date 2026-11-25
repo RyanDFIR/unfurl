@@ -21,7 +21,7 @@ youtube_edge = {
         'color': '#ff0000'
     },
     'title': 'Youtube Parsing Functions',
-    'label': 'YT'
+    'label': '►'
 }
 
 
@@ -53,8 +53,49 @@ def run(unfurl, node):
                     data_type='descriptor', key=None, value=node.value, label=param_text,
                     parent_id=node.node_id, incoming_edge_config=youtube_edge)
 
-        if node.key == 'v' or (node.data_type == 'url.path.segment' and len(node.value) == 11):
-            param_text = f'Video ID: {node.value}'
+        if node.key == 'v' or (node.data_type == 'url.path.segment' and len(node.value) == 11 and node.value[0] != '@') or \
+                (node.data_type == 'url.path' and len(node.value[1:].split('/')) == 1 and len(node.value) == 12 and node.value[1] != '@'):
+            if node.data_type == 'url.path':
+                param_text = f'Video ID: {node.value[1:]}'
+            else:
+                param_text = f'Video ID: {node.value}'
+            unfurl.add_to_queue(
+                data_type='descriptor', key=None, value=node.value, label=param_text,
+                parent_id=node.node_id, incoming_edge_config=youtube_edge)
+
+        # https://support.google.com/youtube/answer/6180214
+        if (node.data_type == 'url.path.segment' and node.value[0] == '@') or \
+                (node.data_type == 'url.path' and len(node.value[1:].split('/')) == 1 and node.value[1] == '@'):
+            param_text = f'Account Handle: {node.value}'
+            unfurl.add_to_queue(
+                data_type='descriptor', key=None, value=node.value, label=param_text,
+                parent_id=node.node_id, incoming_edge_config=youtube_edge)
+
+        if node.data_type == 'url.path.segment' and node.key == 2 and len(node.value) == 24:
+            if unfurl.check_sibling_nodes(node, data_type='url.path.segment', key=1, value='channel'):
+                param_text = f'Channel ID: {node.value}'
+                unfurl.add_to_queue(
+                    data_type='descriptor', key=None, value=node.value, label=param_text,
+                    parent_id=node.node_id, incoming_edge_config=youtube_edge)
+
+        if node.key == 'list' and len(node.value) == 34 and node.value[:2] == 'PL':
+            param_text = f'Playlist ID: {node.value}'
+            unfurl.add_to_queue(
+                data_type='descriptor', key=None, value=node.value, label=param_text,
+                parent_id=node.node_id, incoming_edge_config=youtube_edge)
+
+        if node.key == 'index':
+            try:
+                int(node.value)
+                param_text = f'Video Index in Playlist: {node.value}'
+                unfurl.add_to_queue(
+                    data_type='descriptor', key=None, value=node.value, label=param_text,
+                    parent_id=node.node_id, incoming_edge_config=youtube_edge)
+            except ValueError:
+                pass
+
+        if node.key == 'si' and len(node.value) == 16:
+            param_text = f'Share ID: {node.value}'
             unfurl.add_to_queue(
                 data_type='descriptor', key=None, value=node.value, label=param_text,
                 parent_id=node.node_id, incoming_edge_config=youtube_edge)
